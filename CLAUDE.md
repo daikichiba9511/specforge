@@ -101,36 +101,32 @@ prefix imports — Bun is fine for local dev iteration.
 
 - Parser (`src/parser.ts`) — header, aliases, composite, orthogonal regions, transitions, label
   sub-parsing (event/guard/action), comments
-- CSPm sketch generator (`src/cspm.ts`) — flat states only, marked as sketch
+- CSPm generator (`src/cspm.ts`) — flat states, **hierarchical composite (inline)**, **orthogonal
+  regions (`|||`)**, **completion transitions (`;`)**, **triggered external transitions (`/\\`)**
 - CLI (`src/cli.ts`) — reads file, prints CSPm to stdout
-- Basic parser tests (`tests/parser.test.ts`)
+- Parser tests (`tests/parser.test.ts`) + cspm tests (`tests/cspm.test.ts`)
 - Example spec (`examples/traffic-light.mmd`)
 - CI workflow (`deno fmt --check`, `deno lint`, `deno check`, `deno test`)
+- Benches (`bench/*_bench.ts`) + before/after 比較 (`bench/compare.ts`) — `docs/perf.md`
 
 **Pending (next-session priorities, roughly in order)**:
 
-1. **Composite + orthogonal regions → CSP `|||`**: The AST already nests `regions` arrays. CSPm gen
-   needs to (a) emit one process per state, (b) for composites with multiple regions, emit
-   `Composite = Region1 ||| Region2` (`|||` = interleave; tighten to `[| events |]` for shared
-   events if needed), (c) handle hierarchical composites (single region) as block-structured process
-   inclusion.
-2. **Composite exit cancellation**: UML semantics — when leaving a composite via an external
-   transition, in-progress regions are interrupted. CSP equivalent: `interrupt` operator `P /\ Q`
-   (CSPm). Need to identify "exit transitions" (composite-to-outside) and wrap the composite body
-   with `/\`.
-3. **State variable threading**: Specs reference state variables in guards (`catalog_size > 0`). CSP
+1. **Action chain expansion**: action のカンマ列 (`alert_op, write_failed_list`) を CSP の
+   `alert_op -> write_failed_list -> ...` に展開する。現状は verbatim 出力で FDR4 に流すと syntax
+   error。hitl spec で実害あり。
+2. **State variable threading**: Specs reference state variables in guards (`catalog_size > 0`). CSP
    requires these as process parameters: `Sampling(catalog_size) = ...`. Need to (a) collect
    variable references from guards/actions, (b) thread them through process definitions, (c) update
    channel signatures.
-4. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
+3. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
    reject unparseable guards).
-5. **FDR4 invocation**: subprocess wrapper for `fdr4 batch-process`, parse output for verification
+4. **FDR4 invocation**: subprocess wrapper for `fdr4 batch-process`, parse output for verification
    results. Could be a separate command (`specforge verify spec.mmd`).
-6. **JSON output mode** for piping into other tools.
-7. **Self-dogfood milestone**: once items 1-3 land, run `specforge docs/behavior.md` and feed the
+5. **JSON output mode** for piping into other tools.
+6. **Self-dogfood milestone**: once items 1-2 land, run `specforge docs/behavior.md` and feed the
    output to FDR4. Verify deadlock-freeness and termination on specforge's own pipeline spec. This
    is the first end-to-end demonstration that the spec-behavior → specforge → FDR4 chain works.
-8. **TLA+ backend** (eventual): same AST, different generator. Stub `src/tla.ts`.
+7. **TLA+ backend** (eventual): same AST, different generator. Stub `src/tla.ts`.
 
 ## How to develop
 
@@ -207,12 +203,12 @@ This scaffold is the output of a session where:
 Before writing more code, **read `docs/spec.md`** to know what the parser/cspm must honor. The spec
 doc is the canonical contract; CLAUDE.md (this file) is the project context wrapper around it.
 
-Then pick item 1 from "Pending" (composite + orthogonal regions → `|||`):
+Then pick item 1 from "Pending" (Action chain expansion):
 
-1. Add a test in `tests/cspm.test.ts` for the composite case using the example in `docs/spec.md`
-   §8.2.
+1. Add a test in `tests/cspm.test.ts` for action chain expansion — input `a, b, c` should emit
+   `a -> b -> c -> Next` (instead of the current `a, b, c -> Next`).
 2. Watch it fail.
-3. Update `src/cspm.ts` to emit `|||` for orthogonal regions and inline-process for hierarchical
-   composites, following `docs/spec.md` §7.5.
-4. Run `deno task cli examples/traffic-light.mmd` and the new composite example to sanity-check.
+3. Update label parsing or `src/cspm.ts` (decision: split actions at parser level into `string[]`,
+   or split at codegen time) to expand action chains.
+4. Re-run on `/tmp/hitl-statechart.mmd` and verify FDR4-syntactic output.
 5. Commit with `feat(cspm): ...` per conventional commits.
