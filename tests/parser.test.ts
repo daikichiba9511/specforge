@@ -20,7 +20,23 @@ Deno.test("parses transition with guard and action", () => {
     assertEquals(stmt.to, "B");
     assertEquals(stmt.label.event, "event_name");
     assertEquals(stmt.label.guard, "guard_id");
-    assertEquals(stmt.label.action, "action_id");
+    assertEquals(stmt.label.actions, ["action_id"]);
+});
+
+Deno.test("splits action chain on top-level commas", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+    A --> B : ev / write_task, write_failed_list`));
+    const t = diagram.regions[0].stmts[0];
+    if (t.kind !== "transition") throw new Error("expected transition");
+    assertEquals(t.label.actions, ["write_task", "write_failed_list"]);
+});
+
+Deno.test("preserves commas inside parens in action chain", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+    A --> B : ev / write_task(item_id, count), notify(user)`));
+    const t = diagram.regions[0].stmts[0];
+    if (t.kind !== "transition") throw new Error("expected transition");
+    assertEquals(t.label.actions, ["write_task(item_id, count)", "notify(user)"]);
 });
 
 Deno.test("parses composite state with orthogonal regions", () => {
@@ -65,7 +81,7 @@ Deno.test("parses label with only event", () => {
     if (t.kind !== "transition") throw new Error("expected transition");
     assertEquals(t.label.event, "timer");
     assertEquals(t.label.guard, null);
-    assertEquals(t.label.action, null);
+    assertEquals(t.label.actions, []);
 });
 
 Deno.test("parses label with only action (completion transition)", () => {
@@ -74,7 +90,7 @@ Deno.test("parses label with only action (completion transition)", () => {
     const t = diagram.regions[0].stmts[0];
     if (t.kind !== "transition") throw new Error("expected transition");
     assertEquals(t.label.event, null);
-    assertEquals(t.label.action, "notify_complete");
+    assertEquals(t.label.actions, ["notify_complete"]);
 });
 
 Deno.test("reports error line number for unrecognized statement", () => {

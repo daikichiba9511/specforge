@@ -96,6 +96,38 @@ Outer --> Y : ev2 / a2`);
     );
 });
 
+Deno.test("flat transition expands action chain with ->", () => {
+    const out = cspmOf(`stateDiagram-v2
+A --> B : ev / a1, a2, a3`);
+    assertStringIncludes(out, "ev -> a1 -> a2 -> a3 -> B");
+});
+
+Deno.test("completion transition expands action chain", () => {
+    const out = cspmOf(`stateDiagram-v2
+state Outer {
+    [*] --> Inner
+    Inner --> [*]
+}
+Outer --> Next : / done, cleanup`);
+    assertStringIncludes(out, "Outer = Inner ; done -> cleanup -> Next");
+});
+
+Deno.test("triggered transition expands action chain inside /\\", () => {
+    const out = cspmOf(`stateDiagram-v2
+state Outer {
+    [*] --> Inner
+    Inner --> [*]
+}
+Outer --> Fault : abort / log_err, alert`);
+    assertStringIncludes(out, "Outer = Inner /\\ (abort -> log_err -> alert -> Fault)");
+});
+
+Deno.test("action chain preserves arguments inside parens", () => {
+    const out = cspmOf(`stateDiagram-v2
+A --> B : ev / write(x, y), notify`);
+    assertStringIncludes(out, "ev -> write(x, y) -> notify -> B");
+});
+
 Deno.test("composite ID is not also emitted as a flat process", () => {
     const out = cspmOf(`stateDiagram-v2
 state Outer {

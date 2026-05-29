@@ -51,15 +51,35 @@ const mkError = (s: ParserState, message: string): ParseError => ({
     line: s.pos + 1,
 });
 
+// action のトップレベル `,` で分割。`f(x, y)` のような引数括弧内の `,` は保持。
+const splitActions = (raw: string): string[] => {
+    const result: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < raw.length; i++) {
+        const c = raw[i];
+        if (c === "(") depth++;
+        else if (c === ")" && depth > 0) depth--;
+        else if (c === "," && depth === 0) {
+            const seg = raw.slice(start, i).trim();
+            if (seg) result.push(seg);
+            start = i + 1;
+        }
+    }
+    const last = raw.slice(start).trim();
+    if (last) result.push(last);
+    return result;
+};
+
 const parseLabel = (raw: string): Label => {
     const trimmed = raw.trim();
-    if (!trimmed) return { event: null, guard: null, action: null };
+    if (!trimmed) return { event: null, guard: null, actions: [] };
     // RE_LABEL は trimmed が非空ならば必ず match する構造 (全 group が optional)。
     const groups = RE_LABEL.exec(trimmed)?.groups ?? {};
     return {
         event: groups.event?.trim() || null,
         guard: groups.guard?.trim() ?? null,
-        action: groups.action?.trim() ?? null,
+        actions: splitActions(groups.action ?? ""),
     };
 };
 

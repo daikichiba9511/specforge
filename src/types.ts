@@ -22,14 +22,19 @@ export type PseudoState = typeof PSEUDO_STATE;
 export const isPseudoState = (s: string): s is PseudoState => s === PSEUDO_STATE;
 
 /**
- * 遷移ラベル `event [guard] / action` の構造化表現。
+ * 遷移ラベル `event [guard] / action1, action2, ...` の構造化表現。
  *
- * 各要素は省略可能で、`null` は不在を表す。文法詳細は `docs/spec.md` §4 を参照。
+ * - `event` / `guard` は省略可、不在は `null`。
+ * - `actions` は 0 個以上のアクション列。トップレベル `,` で分割され、
+ *   引数表記の括弧内 `,` は保持される (例: `write_task(item_id, count)` は 1 要素)。
+ *   CSPm では `act1 -> act2 -> ...` の sequential prefix に展開される。
+ *
+ * 文法詳細は `docs/spec.md` §4 を参照。
  */
 export type Label = {
     event: string | null;
     guard: string | null;
-    action: string | null;
+    actions: string[];
 };
 
 /**

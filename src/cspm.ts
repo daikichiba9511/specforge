@@ -46,12 +46,19 @@ const groupByFrom = (transitions: Transition[]): Map<string, Transition[]> => {
     return result;
 };
 
+// `["a", "b", "c"]` を ` -> a -> b -> c` の suffix 形に。空配列は "" を返す。
+const actionsSuffix = (actions: string[]): string =>
+    actions.length > 0 ? ` -> ${actions.join(" -> ")}` : "";
+
+// `["a", "b"]` を `a -> b -> ` の prefix 形に。空配列は "" を返す (完了遷移用)。
+const actionsPrefix = (actions: string[]): string =>
+    actions.length > 0 ? `${actions.join(" -> ")} -> ` : "";
+
 const formatLeafBranch = (t: Transition): string => {
     const guard = t.label.guard ? ` & ${t.label.guard}` : "";
-    const action = t.label.action ? ` -> ${t.label.action}` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
     const event = t.label.event ?? "tau";
-    return `  ${event}${guard}${action} -> ${to}`;
+    return `  ${event}${guard}${actionsSuffix(t.label.actions)} -> ${to}`;
 };
 
 const formatLeafProcess = (from: string, transitions: Transition[]): string =>
@@ -70,9 +77,8 @@ const regionEntry = (region: Region): string => {
 // guard / action / target prefix that runs AFTER the composite body SKIPs.
 const formatCompletionBranch = (t: Transition): string => {
     const guard = t.label.guard ? `${t.label.guard} & ` : "";
-    const action = t.label.action ? `${t.label.action} -> ` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
-    return `${guard}${action}${to}`;
+    return `${guard}${actionsPrefix(t.label.actions)}${to}`;
 };
 
 // Triggered external transition from a composite (event != null). Becomes
@@ -80,9 +86,8 @@ const formatCompletionBranch = (t: Transition): string => {
 const formatTriggeredBranch = (t: Transition): string => {
     const event = t.label.event ?? "tau";
     const guard = t.label.guard ? ` & ${t.label.guard}` : "";
-    const action = t.label.action ? ` -> ${t.label.action}` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
-    return `${event}${guard}${action} -> ${to}`;
+    return `${event}${guard}${actionsSuffix(t.label.actions)} -> ${to}`;
 };
 
 // Render a composite state as a CSPm process:
