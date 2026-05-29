@@ -1,10 +1,11 @@
 import type { Diagram, Label, Region, Stmt } from "./types.ts";
+import { err, ok, type Result } from "./result.ts";
 
-export class ParseError extends Error {
-    constructor(msg: string, public line: number) {
-        super(`L${line}: ${msg}`);
-    }
-}
+export type ParseError = {
+    kind: "ParseError";
+    message: string;
+    line: number;
+};
 
 const RE_HEADER = /^stateDiagram-v2\b/;
 const RE_COMPOSITE = /^state\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{$/;
@@ -14,128 +15,130 @@ const RE_TRANSITION =
     /^(\[\*\]|[A-Za-z_][A-Za-z0-9_]*)\s*-->\s*(\[\*\]|[A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*(.*))?$/;
 const RE_LABEL = /^([^\[\/]*?)\s*(?:\[([^\]]+)\])?\s*(?:\/\s*(.+))?$/;
 
-export class Parser {
-    private lines: string[];
-    private pos = 0;
+const stripComment = (line: string): string => {
+    const idx = line.indexOf("%%");
+    return idx >= 0 ? line.substring(0, idx).trimEnd() : line;
+};
 
-    constructor(input: string) {
-        this.lines = input.split("\n").map((l) => {
-            const idx = l.indexOf("%%");
-            return idx >= 0 ? l.substring(0, idx).trimEnd() : l;
-        });
-    }
+const parseLabel = (raw: string): Label => {
+    const trimmed = raw.trim();
+    if (!trimmed) return { event: null, guard: null, action: null };
+    const m = RE_LABEL.exec(trimmed);
+    if (!m) return { event: trimmed, guard: null, action: null };
+    const [, ev, gd, ac] = m;
+    return {
+        event: ev.trim() || null,
+        guard: gd?.trim() ?? null,
+        action: ac?.trim() ?? null,
+    };
+};
 
-    parse(): Diagram {
-        this.skipBlank();
-        const header = this.lines[this.pos]?.trim() ?? "";
-        if (!RE_HEADER.test(header)) {
-            throw new ParseError(
-                `expected 'stateDiagram-v2', got '${header}'`,
-                this.pos + 1,
-            );
+export const parse = (input: string): Result<Diagram, ParseError> => {
+    const lines = input.split("\n").map(stripComment);
+    let pos = 0;
+
+    const mkError = (message: string): ParseError => ({
+        kind: "ParseError",
+        message,
+        line: pos + 1,
+    });
+
+    const skipBlank = (): void => {
+        while (pos < lines.length && lines[pos].trim() === "") pos++;
+    };
+
+    const parseStmt = (): Result<Stmt, ParseError> => {
+        const trimmed = lines[pos].trim();
+
+        const composite = RE_COMPOSITE.exec(trimmed);
+        if (composite) {
+            pos++;
+            const regions = parseRegions(1);
+            if (!regions.ok) return regions;
+            return ok({
+                kind: "composite",
+                id: composite[1],
+                regions: regions.value,
+            });
         }
-        this.pos++;
-        const regions = this.parseRegions(0);
-        return { type: "stateDiagram-v2", regions };
-    }
 
-    private parseRegions(depth: number): Region[] {
+        const alias = RE_ALIAS.exec(trimmed);
+        if (alias) {
+            pos++;
+            return ok({
+                kind: "alias",
+                description: alias[1],
+                id: alias[2],
+            });
+        }
+
+        const stateDecl = RE_STATE_DECL.exec(trimmed);
+        if (stateDecl) {
+            pos++;
+            return ok({
+                kind: "alias",
+                description: "",
+                id: stateDecl[1],
+            });
+        }
+
+        const trans = RE_TRANSITION.exec(trimmed);
+        if (trans) {
+            pos++;
+            return ok({
+                kind: "transition",
+                from: trans[1],
+                to: trans[2],
+                label: parseLabel(trans[3] ?? ""),
+            });
+        }
+
+        return err(mkError(`unrecognized statement: '${trimmed}'`));
+    };
+
+    const parseRegions = (depth: number): Result<Region[], ParseError> => {
         const regions: Region[] = [];
         let current: Stmt[] = [];
 
-        while (this.pos < this.lines.length) {
-            const trimmed = this.lines[this.pos].trim();
+        while (pos < lines.length) {
+            const trimmed = lines[pos].trim();
 
             if (trimmed === "") {
-                this.pos++;
+                pos++;
                 continue;
             }
             if (trimmed === "}") {
-                if (depth === 0) {
-                    throw new ParseError("unexpected '}'", this.pos + 1);
-                }
-                this.pos++;
+                if (depth === 0) return err(mkError("unexpected '}'"));
+                pos++;
                 regions.push({ stmts: current });
-                return regions;
+                return ok(regions);
             }
             if (trimmed === "--") {
-                this.pos++;
+                pos++;
                 regions.push({ stmts: current });
                 current = [];
                 continue;
             }
 
-            current.push(this.parseStmt());
+            const stmt = parseStmt();
+            if (!stmt.ok) return stmt;
+            current.push(stmt.value);
         }
 
-        if (depth > 0) {
-            throw new ParseError("unexpected EOF, expected '}'", this.pos);
-        }
+        if (depth > 0) return err(mkError("unexpected EOF, expected '}'"));
         regions.push({ stmts: current });
-        return regions;
+        return ok(regions);
+    };
+
+    skipBlank();
+    const header = lines[pos]?.trim() ?? "";
+    if (!RE_HEADER.test(header)) {
+        return err(mkError(`expected 'stateDiagram-v2', got '${header}'`));
     }
+    pos++;
+    const regions = parseRegions(0);
+    if (!regions.ok) return regions;
+    return ok({ type: "stateDiagram-v2", regions: regions.value });
+};
 
-    private parseStmt(): Stmt {
-        const trimmed = this.lines[this.pos].trim();
-
-        const composite = RE_COMPOSITE.exec(trimmed);
-        if (composite) {
-            this.pos++;
-            const regions = this.parseRegions(1);
-            return { kind: "composite", id: composite[1], regions };
-        }
-
-        const alias = RE_ALIAS.exec(trimmed);
-        if (alias) {
-            this.pos++;
-            return { kind: "alias", description: alias[1], id: alias[2] };
-        }
-
-        const stateDecl = RE_STATE_DECL.exec(trimmed);
-        if (stateDecl) {
-            this.pos++;
-            return { kind: "alias", description: "", id: stateDecl[1] };
-        }
-
-        const trans = RE_TRANSITION.exec(trimmed);
-        if (trans) {
-            this.pos++;
-            return {
-                kind: "transition",
-                from: trans[1],
-                to: trans[2],
-                label: this.parseLabel(trans[3] ?? ""),
-            };
-        }
-
-        throw new ParseError(
-            `unrecognized statement: '${trimmed}'`,
-            this.pos + 1,
-        );
-    }
-
-    private parseLabel(s: string): Label {
-        const trimmed = s.trim();
-        if (!trimmed) return { event: null, guard: null, action: null };
-        const m = RE_LABEL.exec(trimmed);
-        if (!m) return { event: trimmed, guard: null, action: null };
-        const [, ev, gd, ac] = m;
-        return {
-            event: ev.trim() || null,
-            guard: gd?.trim() ?? null,
-            action: ac?.trim() ?? null,
-        };
-    }
-
-    private skipBlank() {
-        while (
-            this.pos < this.lines.length && this.lines[this.pos].trim() === ""
-        ) {
-            this.pos++;
-        }
-    }
-}
-
-export function parse(input: string): Diagram {
-    return new Parser(input).parse();
-}
+export const formatParseError = (e: ParseError): string => `L${e.line}: ${e.message}`;
