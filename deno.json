@@ -1,0 +1,20 @@
+{
+    "tasks": {
+        "test": "deno test",
+        "fmt": "deno fmt",
+        "lint": "deno lint",
+        "check": "deno check src/**/*.ts tests/**/*.ts",
+        "cli": "deno run --allow-read src/cli.ts",
+        "compile": "deno compile --allow-read --output bin/specforge src/cli.ts"
+    },
+    "fmt": {
+        "indentWidth": 4,
+        "lineWidth": 100,
+        "semiColons": true
+    },
+    "lint": {
+        "rules": {
+            "tags": ["recommended"]
+        }
+    }
+}

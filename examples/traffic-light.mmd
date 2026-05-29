@@ -1,0 +1,6 @@
+stateDiagram-v2
+    %% Minimal traffic-light example for smoke tests.
+    [*] --> Red
+    Red --> Green : timer [count_done] / log_change
+    Green --> Yellow : timer [count_done] / log_change
+    Yellow --> Red : timer [count_done] / log_change
