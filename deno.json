@@ -1,6 +1,6 @@
 {
     "tasks": {
-        "test": "deno test --allow-read",
+        "test": "deno test",
         "fmt": "deno fmt",
         "lint": "deno lint",
         "check": "deno check src/**/*.ts tests/**/*.ts",
