@@ -41,6 +41,8 @@ formal property check side becomes a button-press.
   as a `spec-behavior`-style state machine. Doubles as the **dogfood target**: feed this through
   specforge itself once MVP is ready, run FDR4 on the output to verify deadlock-freeness and
   termination
+- **[`docs/perf.md`](./docs/perf.md)** — bench (`deno task bench`) と before/after 比較
+  (`deno task bench:compare`)、CPU プロファイル取得手順、最適化を始める時の着目ポイント
 
 ## The input language: `spec-behavior` subset
 
@@ -150,7 +152,11 @@ deno task lint       # lint
 deno task check      # type check
 deno task cli examples/traffic-light.mmd   # run on example
 deno task compile    # produce bin/specforge binary
+deno task bench      # run all benchmarks
+deno task bench:compare /tmp/before.json /tmp/after.json   # compare two `deno bench --json` runs
 ```
+
+パフォーマンス周りは `docs/perf.md` に詳細あり。
 
 ## Key references (in dotfiles / outside repo)
 
