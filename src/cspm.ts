@@ -1,11 +1,8 @@
 import { isPseudoState } from "./types.ts";
 import type { Diagram, Region, Stmt } from "./types.ts";
+import { exhaustive } from "./util.ts";
 
 type Transition = Extract<Stmt, { kind: "transition" }>;
-
-const exhaustive = (x: never): never => {
-    throw new Error(`unreachable: unhandled variant ${JSON.stringify(x)}`);
-};
 
 const collectTransitions = (regions: Region[]): Transition[] =>
     regions.flatMap((region) =>
