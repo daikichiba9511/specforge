@@ -86,3 +86,39 @@ Deno.test("main: --tla flag switches to TLA+ backend", () => {
     assertEquals(r.stdout.startsWith("---- MODULE Spec ----"), true);
     assertEquals(r.stdout.includes("Spec == Init /\\ [][Next]_vars"), true);
 });
+
+Deno.test("main: --json flag outputs AST + metadata as JSON", () => {
+    const r = main(["--json", "spec.md"], { readFile: () => MARKDOWN_SPEC });
+    assertEquals(r.kind, "success");
+    if (r.kind !== "success") return;
+    const parsed = JSON.parse(r.stdout);
+    assertEquals(parsed.diagram.type, "stateDiagram-v2");
+    assertEquals(parsed.guards.ok, "x > 0");
+    assertEquals(parsed.stateVars, ["x"]);
+});
+
+const SPEC_WITH_WARNING = `stateDiagram-v2
+A --> B : ev [missing_guard]`;
+
+Deno.test("main: validation issues attached as warnings, success kind unchanged by default", () => {
+    const r = main(["spec.mmd"], { readFile: () => SPEC_WITH_WARNING });
+    assertEquals(r.kind, "success");
+    if (r.kind !== "success") return;
+    assertEquals(r.warnings !== undefined && r.warnings.length > 0, true);
+    assertEquals(r.warnings![0].includes("V001"), true);
+});
+
+Deno.test("main: --strict converts warnings into failure", () => {
+    const r = main(["--strict", "spec.mmd"], { readFile: () => SPEC_WITH_WARNING });
+    assertEquals(r.kind, "failure");
+    if (r.kind !== "failure") return;
+    assertEquals(r.exitCode, 1);
+    assertEquals(r.warnings !== undefined && r.warnings.length > 0, true);
+});
+
+Deno.test("main: clean spec → no warnings attached", () => {
+    const r = main(["spec.mmd"], { readFile: () => VALID_SPEC });
+    assertEquals(r.kind, "success");
+    if (r.kind !== "success") return;
+    assertEquals(r.warnings, []);
+});

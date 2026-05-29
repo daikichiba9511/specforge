@@ -116,9 +116,12 @@ prefix imports — Bun is fine for local dev iteration.
   `java -cp tla2tools.jar
   tlc2.TLC` を subprocess 実行 → 結果サマリ。java と tla2tools.jar
   の検出付き
-- CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、デフォルトは CSPm、`--tla` で TLA+、`verify`
-  サブコマンドで TLC 検証
-- Parser tests + cspm tests + tla tests + spec_doc tests + cli tests + verify tests
+- **Validation pass (`src/validate.ts`)** — parse 後に V001 (guard 辞書漏れ) / V002 (guard 式の
+  未宣言変数) / V003 (composite region の `[*] -->` 入口欠落) を warning 報告。`--strict` で warning
+  → failure 昇格
+- CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、デフォルトは CSPm、`--tla` で TLA+、`--json` で AST +
+  metadata の JSON 出力、`--strict` で validation 厳格化、`verify` サブコマンドで TLC 検証
+- Parser tests + cspm tests + tla tests + spec_doc tests + cli tests + verify tests + validate tests
 - Example spec (`examples/traffic-light.mmd`)
 - CI workflow (`deno fmt --check`, `deno lint`, `deno check`, `deno test`)
 - Benches (`bench/*_bench.ts`) + before/after 比較 (`bench/compare.ts`) — `docs/perf.md`
@@ -129,17 +132,15 @@ prefix imports — Bun is fine for local dev iteration.
 
 **Pending (next-session priorities, roughly in order)**:
 
-1. **Validation pass**: post-parse pass で「ガード辞書漏れ」「未宣言変数の参照」「未到達 state」
-   「event payload field 名と state var 名のミスマッチ」等を warning 報告。fix 候補も併記して UX
-   改善。
-2. **JSON output mode** for piping into other tools.
-3. **Liveness / fairness 検証**: 現状 `assert Spec :[deadlock free]` 相当のみ。 weak/strong fairness
+1. **Liveness / fairness 検証**: 現状 `assert Spec :[deadlock free]` 相当のみ。weak/strong fairness
    仮定を `.cfg` に書く、`PROPERTY <>Terminated` 形の liveness check を生成する形で拡張可能。
-4. **状態空間の bound 調整**: `Domain == 0..1` 固定だと数値比較の意味が薄い (`>0` と `==0` の 2 値
+2. **状態空間の bound 調整**: `Domain == 0..1` 固定だと数値比較の意味が薄い (`>0` と `==0` の 2 値
    しか区別できない)。CLI flag や spec 内 annotation で `0..N` を上書きできるようにする。
-5. **CSPm 側の磨き込み**: FDR4 で動かす場合のテスト (FDR4 を手動インストールしたら)、もしくは FDR4
+3. **Validation rules 拡張**: 未到達 state / 終端へ向かう経路が無い state / event payload 名と state
+   var 名のミスマッチ (V004 〜) を順次追加。
+4. **CSPm 側の磨き込み**: FDR4 で動かす場合のテスト (FDR4 を手動インストールしたら)、もしくは FDR4
    を諦めて CSPm 出力を archive 化する選択。
-6. **Action update semantics (将来)**: action による state var 更新セマンティクス。AST 拡張 +
+5. **Action update semantics (将来)**: action による state var 更新セマンティクス。AST 拡張 +
    spec-behavior 側の規律拡張が必要。
 
 ## How to develop
@@ -160,8 +161,10 @@ deno task test       # run tests
 deno task fmt        # format
 deno task lint       # lint
 deno task check      # type check
-deno task cli examples/traffic-light.mmd          # CSPm 出力
+deno task cli examples/traffic-light.mmd          # CSPm 出力 (validation warnings は stderr)
 deno task cli --tla examples/traffic-light.mmd    # TLA+ 出力
+deno task cli --json examples/traffic-light.mmd   # AST + metadata の JSON 出力
+deno task cli --strict examples/traffic-light.mmd # validation warning を error 扱い (exit 1)
 deno task verify examples/traffic-light.mmd       # spec → TLA+ → TLC で検証
 deno task compile    # produce bin/specforge binary
 deno task bench      # run all benchmarks
