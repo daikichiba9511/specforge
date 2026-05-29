@@ -2,12 +2,23 @@ import type { Diagram, Region, Stmt } from "./types.ts";
 
 type Transition = Extract<Stmt, { kind: "transition" }>;
 
+const exhaustive = (x: never): never => {
+    throw new Error(`unreachable: unhandled variant ${JSON.stringify(x)}`);
+};
+
 const collectTransitions = (regions: Region[]): Transition[] =>
     regions.flatMap((region) =>
         region.stmts.flatMap((stmt): Transition[] => {
-            if (stmt.kind === "transition") return [stmt];
-            if (stmt.kind === "composite") return collectTransitions(stmt.regions);
-            return [];
+            switch (stmt.kind) {
+                case "transition":
+                    return [stmt];
+                case "composite":
+                    return collectTransitions(stmt.regions);
+                case "alias":
+                    return [];
+                default:
+                    return exhaustive(stmt);
+            }
         })
     );
 
