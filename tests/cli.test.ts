@@ -41,3 +41,24 @@ Deno.test("main: parse error returns failure with line number", () => {
     assertEquals(r.exitCode, 1);
     assertEquals(r.stderr.startsWith("L1:"), true);
 });
+
+const MARKDOWN_SPEC = `# title
+
+\`\`\`mermaid
+stateDiagram-v2
+A --> B : ev [ok] / act
+\`\`\`
+
+### ガード定義
+
+| Guard | Cond |
+| --- | --- |
+| \`ok\` | \`x > 0\` |
+`;
+
+Deno.test("main: .md input extracts mermaid block and applies guard substitution", () => {
+    const r = main(["spec.md"], { readFile: () => MARKDOWN_SPEC });
+    assertEquals(r.kind, "success");
+    if (r.kind !== "success") return;
+    assertEquals(r.stdout.includes("ev & x > 0 -> act -> B"), true);
+});

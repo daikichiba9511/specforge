@@ -216,7 +216,36 @@ specforge は表を**外部ファイル参照**または spec ファイル内の
 | `prelabeled_count` | int (>=0) | Prelabeling step | Prelabeling 遷移時のガード | 0      |
 ```
 
-### 5.3 設計メモ
+### 5.3 ガード定義表 (specforge が取り込む)
+
+`[catalog_ok]` のような **ガードタグ**と、対応する **CSP/CSPm 式**を表で対応付ける。specforge は
+`.md` 入力時にこの表を抽出し、CSPm 生成時に guard タグを式に置換する。
+
+入力形式:
+
+- `### ガード定義` または `### Guard(s)` を含む見出し (`#` 1〜6 個、case insensitive)
+- 直後の最初の markdown 表を取り込む
+- 1 列目 = ガードタグ、2 列目 = 条件式
+- backtick (`` `catalog_ok` ``) で囲んでも囲まなくても可
+
+形式:
+
+```markdown
+### ガード定義
+
+| ガード ID       | 条件                | 根拠                     |
+| --------------- | ------------------- | ------------------------ |
+| `catalog_ok`    | `catalog_size > 0`  | サンプリング結果があれば |
+| `catalog_empty` | `catalog_size == 0` | データなし               |
+```
+
+辞書に無いタグは verbatim で出力される (FDR4 側で未定義識別子エラーになるので、表に書き漏らしを
+発見しやすい)。
+
+`.mmd` 入力 (raw Mermaid) を渡した場合、ガード辞書は空のまま全て verbatim 出力。
+ガード辞書を使いたい場合は `.md` 形式で `### ガード定義` 表を含めて渡す必要がある。
+
+### 5.4 設計メモ
 
 spec-behavior の write モード Step 4 で出力される設計メモを継承する。CSPm 変換に直接効くフィールド:
 
@@ -228,7 +257,7 @@ spec-behavior の write モード Step 4 で出力される設計メモを継承
 - **共有状態の排他制御**: 単一書き込み元 / lock / CAS 等
 - **既知の未対応ケース**: 意図的に省いた組合せ (検証時の expected gap)
 
-### 5.4 Validation pass の責務
+### 5.5 Validation pass の責務
 
 parse 後に走る別パス。**parser は構文のみ受理 / 拒絶**し、意味検査はこちら:
 

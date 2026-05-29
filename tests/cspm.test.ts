@@ -3,7 +3,8 @@ import { parse } from "../src/parser.ts";
 import { generateCspm } from "../src/cspm.ts";
 import { expectOk } from "./_helpers.ts";
 
-const cspmOf = (src: string): string => generateCspm(expectOk(parse(src)));
+const cspmOf = (src: string, guards?: Map<string, string>): string =>
+    generateCspm(expectOk(parse(src)), guards);
 
 Deno.test("flat process emission (baseline)", () => {
     const out = cspmOf(`stateDiagram-v2
@@ -126,6 +127,50 @@ Deno.test("action chain preserves arguments inside parens", () => {
     const out = cspmOf(`stateDiagram-v2
 A --> B : ev / write(x, y), notify`);
     assertStringIncludes(out, "ev -> write(x, y) -> notify -> B");
+});
+
+Deno.test("substitutes guard tag from dictionary", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+A --> B : ev [catalog_ok] / act`,
+        new Map([["catalog_ok", "catalog_size > 0"]]),
+    );
+    assertStringIncludes(out, "ev & catalog_size > 0 -> act -> B");
+});
+
+Deno.test("leaves unmapped guard verbatim when not in dictionary", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+A --> B : ev [unknown_guard] / act`,
+        new Map([["other", "x > 0"]]),
+    );
+    assertStringIncludes(out, "ev & unknown_guard -> act -> B");
+});
+
+Deno.test("substitutes guard in completion transition", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+state Outer {
+    [*] --> Inner
+    Inner --> [*]
+}
+Outer --> Next : [ok] / done`,
+        new Map([["ok", "count > 0"]]),
+    );
+    assertStringIncludes(out, "Outer = Inner ; count > 0 & done -> Next");
+});
+
+Deno.test("substitutes guard in triggered transition (inside /\\)", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+state Outer {
+    [*] --> Inner
+    Inner --> [*]
+}
+Outer --> Fault : abort [bad] / alert`,
+        new Map([["bad", "err_count > 0"]]),
+    );
+    assertStringIncludes(out, "Outer = Inner /\\ (abort & err_count > 0 -> alert -> Fault)");
 });
 
 Deno.test("composite ID is not also emitted as a flat process", () => {

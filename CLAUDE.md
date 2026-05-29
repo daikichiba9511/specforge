@@ -100,33 +100,32 @@ prefix imports — Bun is fine for local dev iteration.
 **Done**:
 
 - Parser (`src/parser.ts`) — header, aliases, composite, orthogonal regions, transitions, label
-  sub-parsing (event/guard/action), comments
-- CSPm generator (`src/cspm.ts`) — flat states, **hierarchical composite (inline)**, **orthogonal
-  regions (`|||`)**, **completion transitions (`;`)**, **triggered external transitions (`/\\`)**
-- CLI (`src/cli.ts`) — reads file, prints CSPm to stdout
-- Parser tests (`tests/parser.test.ts`) + cspm tests (`tests/cspm.test.ts`)
+  sub-parsing (event/guard/action chain), comments
+- CSPm generator (`src/cspm.ts`) — flat states, hierarchical composite (inline), orthogonal regions
+  (`|||`), completion transitions (`;`), triggered external transitions (`/\\`), action chain
+  (`a, b` → `a -> b`), **guard dictionary substitution**
+- `.md` 入力対応 (`src/spec_doc.ts`) — Mermaid block 抽出 + `### ガード定義` 表をガード辞書化
+- CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、CSPm を stdout 出力
+- Parser tests + cspm tests + spec_doc tests + cli tests
 - Example spec (`examples/traffic-light.mmd`)
 - CI workflow (`deno fmt --check`, `deno lint`, `deno check`, `deno test`)
 - Benches (`bench/*_bench.ts`) + before/after 比較 (`bench/compare.ts`) — `docs/perf.md`
 
 **Pending (next-session priorities, roughly in order)**:
 
-1. **Action chain expansion**: action のカンマ列 (`alert_op, write_failed_list`) を CSP の
-   `alert_op -> write_failed_list -> ...` に展開する。現状は verbatim 出力で FDR4 に流すと syntax
-   error。hitl spec で実害あり。
-2. **State variable threading**: Specs reference state variables in guards (`catalog_size > 0`). CSP
-   requires these as process parameters: `Sampling(catalog_size) = ...`. Need to (a) collect
-   variable references from guards/actions, (b) thread them through process definitions, (c) update
-   channel signatures.
-3. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
-   reject unparseable guards).
-4. **FDR4 invocation**: subprocess wrapper for `fdr4 batch-process`, parse output for verification
+1. **State variable declaration / threading (Phase 2+)**: 現状ガード式は文字列として置換されるが、
+   `catalog_size` 等の参照変数は CSPm 環境で未定義。Phase 2 として `### 共有状態` 表から
+   `channel <var> : Int` などを冒頭に emit。Phase 3 として `Sampling(catalog_size) = ...` 型の
+   プロセスパラメータ化と遷移時の thread。
+2. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
+   reject unparseable guards, ガード辞書に無いタグを warning など).
+3. **FDR4 invocation**: subprocess wrapper for `fdr4 batch-process`, parse output for verification
    results. Could be a separate command (`specforge verify spec.mmd`).
-5. **JSON output mode** for piping into other tools.
-6. **Self-dogfood milestone**: once items 1-2 land, run `specforge docs/behavior.md` and feed the
+4. **JSON output mode** for piping into other tools.
+5. **Self-dogfood milestone**: once items 1-2 land, run `specforge docs/behavior.md` and feed the
    output to FDR4. Verify deadlock-freeness and termination on specforge's own pipeline spec. This
    is the first end-to-end demonstration that the spec-behavior → specforge → FDR4 chain works.
-7. **TLA+ backend** (eventual): same AST, different generator. Stub `src/tla.ts`.
+6. **TLA+ backend** (eventual): same AST, different generator. Stub `src/tla.ts`.
 
 ## How to develop
 
@@ -203,12 +202,14 @@ This scaffold is the output of a session where:
 Before writing more code, **read `docs/spec.md`** to know what the parser/cspm must honor. The spec
 doc is the canonical contract; CLAUDE.md (this file) is the project context wrapper around it.
 
-Then pick item 1 from "Pending" (Action chain expansion):
+Then pick item 1 from "Pending" — State variable declaration / threading (Phase 2 以降):
 
-1. Add a test in `tests/cspm.test.ts` for action chain expansion — input `a, b, c` should emit
-   `a -> b -> c -> Next` (instead of the current `a, b, c -> Next`).
-2. Watch it fail.
-3. Update label parsing or `src/cspm.ts` (decision: split actions at parser level into `string[]`,
-   or split at codegen time) to expand action chains.
-4. Re-run on `/tmp/hitl-statechart.mmd` and verify FDR4-syntactic output.
+1. `src/spec_doc.ts` に `### 共有状態` / `### State variables` 表を拾う `extractStateVars` を追加。
+   既存の `extractGuards` と並びの構造 (`name → { type, ... }` のような map) で返す。
+2. cspm generator の冒頭に `channel <var>` (もしくは `nametype Var = Int` 等) を emit する分岐を
+   追加。`docs/spec.md` §5.2 の表が型まで持っているので、それを使う。
+3. hitl `.md` を流して FDR4 で実行 (`fdr4 batch-process spec.csp`) し、未定義識別子エラーが消える
+   ことを確認。FDR4 が無ければ `assert P :[deadlock free]` を含む小さな手書き wrapper を `examples/`
+   に置いてもよい。
+4. Phase 3 (プロセスパラメータ化) は別 PR。先に Phase 2 でどこまで FDR4 が動くか測る。
 5. Commit with `feat(cspm): ...` per conventional commits.

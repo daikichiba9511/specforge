@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { argv, exit } from "node:process";
 import { formatParseError, parse } from "./parser.ts";
 import { generateCspm } from "./cspm.ts";
+import { preprocess } from "./spec_doc.ts";
 
 /**
  * CLI 実行結果を表す判別ユニオン。
@@ -49,19 +50,20 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
         return { kind: "failure", exitCode: 1, stderr: "usage: specforge <spec.mmd>" };
     }
 
-    let input: string;
+    let raw: string;
     try {
-        input = deps.readFile(args[0]);
+        raw = deps.readFile(args[0]);
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return { kind: "failure", exitCode: 1, stderr: `could not read file: ${msg}` };
     }
 
-    const result = parse(input);
+    const doc = preprocess(raw);
+    const result = parse(doc.mermaid);
     if (!result.ok) {
         return { kind: "failure", exitCode: 1, stderr: formatParseError(result.error) };
     }
-    return { kind: "success", stdout: generateCspm(result.value) };
+    return { kind: "success", stdout: generateCspm(result.value, doc.guards) };
 };
 
 if (import.meta.main) {

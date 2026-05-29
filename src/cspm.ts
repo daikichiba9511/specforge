@@ -54,15 +54,21 @@ const actionsSuffix = (actions: string[]): string =>
 const actionsPrefix = (actions: string[]): string =>
     actions.length > 0 ? `${actions.join(" -> ")} -> ` : "";
 
-const formatLeafBranch = (t: Transition): string => {
-    const guard = t.label.guard ? ` & ${t.label.guard}` : "";
+// ガードタグを辞書で式に置換。辞書に無いタグは verbatim を返す。
+const resolveGuard = (raw: string, guards: Map<string, string>): string => guards.get(raw) ?? raw;
+
+const formatLeafBranch = (t: Transition, guards: Map<string, string>): string => {
+    const guard = t.label.guard ? ` & ${resolveGuard(t.label.guard, guards)}` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
     const event = t.label.event ?? "tau";
     return `  ${event}${guard}${actionsSuffix(t.label.actions)} -> ${to}`;
 };
 
-const formatLeafProcess = (from: string, transitions: Transition[]): string =>
-    `${from} =\n${transitions.map(formatLeafBranch).join("\n  []\n")}`;
+const formatLeafProcess = (
+    from: string,
+    transitions: Transition[],
+    guards: Map<string, string>,
+): string => `${from} =\n${transitions.map((t) => formatLeafBranch(t, guards)).join("\n  []\n")}`;
 
 // `[*] --> X` inside a region marks X as the region entry. ill-formed input
 // (no entry transition) falls back to SKIP so codegen doesn't crash.
@@ -75,17 +81,17 @@ const regionEntry = (region: Region): string => {
 
 // Completion transition from a composite (event == null). Emit as a CSP
 // guard / action / target prefix that runs AFTER the composite body SKIPs.
-const formatCompletionBranch = (t: Transition): string => {
-    const guard = t.label.guard ? `${t.label.guard} & ` : "";
+const formatCompletionBranch = (t: Transition, guards: Map<string, string>): string => {
+    const guard = t.label.guard ? `${resolveGuard(t.label.guard, guards)} & ` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
     return `${guard}${actionsPrefix(t.label.actions)}${to}`;
 };
 
 // Triggered external transition from a composite (event != null). Becomes
 // the branch inside the interrupt operator `/\\ (...)`.
-const formatTriggeredBranch = (t: Transition): string => {
+const formatTriggeredBranch = (t: Transition, guards: Map<string, string>): string => {
     const event = t.label.event ?? "tau";
-    const guard = t.label.guard ? ` & ${t.label.guard}` : "";
+    const guard = t.label.guard ? ` & ${resolveGuard(t.label.guard, guards)}` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
     return `${event}${guard}${actionsSuffix(t.label.actions)} -> ${to}`;
 };
@@ -98,7 +104,11 @@ const formatTriggeredBranch = (t: Transition): string => {
 //   triggered-choice  = t1 [] t2 [] ...     (triggered transitions, event != null)
 // Parens are inserted so CSPm precedence (`;` tighter than `|||`, `/\\` looser
 // than `;`) does not silently change the grouping.
-const formatComposite = (c: Composite, outer: Transition[]): string => {
+const formatComposite = (
+    c: Composite,
+    outer: Transition[],
+    guards: Map<string, string>,
+): string => {
     const entries = c.regions.map(regionEntry);
     const orthogonal = entries.length > 1;
     const body = orthogonal ? entries.join(" ||| ") : (entries[0] ?? "SKIP");
@@ -109,13 +119,17 @@ const formatComposite = (c: Composite, outer: Transition[]): string => {
     let core = body;
 
     if (completion.length > 0) {
-        const completionStr = completion.map(formatCompletionBranch).join(" [] ");
+        const completionStr = completion
+            .map((t) => formatCompletionBranch(t, guards))
+            .join(" [] ");
         const bodyExpr = orthogonal ? `(${body})` : body;
         core = `${bodyExpr} ; ${completionStr}`;
     }
 
     if (triggered.length > 0) {
-        const triggeredStr = triggered.map(formatTriggeredBranch).join(" [] ");
+        const triggeredStr = triggered
+            .map((t) => formatTriggeredBranch(t, guards))
+            .join(" [] ");
         const coreExpr = completion.length > 0 || orthogonal ? `(${core})` : core;
         core = `${coreExpr} /\\ (${triggeredStr})`;
     }
@@ -134,15 +148,21 @@ const formatComposite = (c: Composite, outer: Transition[]): string => {
  *   - composite 外への完了遷移 (`: / action`) は `;` で sequential 接続
  *   - composite 外への triggered 遷移は `/\\` (interrupt) で包む
  *
+ * `guards` 辞書を渡すと、`[catalog_ok]` のような guard タグが対応する CSPm 式
+ * (例: `catalog_size > 0`) に置換される。辞書に無いタグは verbatim を維持。
+ * 辞書は `.md` 入力時に {@link "./spec_doc.ts"} の preprocess が抽出する。
+ *
  * 現状の制約 (`docs/spec.md` §7、`CLAUDE.md` "Pending" 参照):
- * - 状態変数のプロセスパラメータ化未対応
- * - action のカンマ列 (`a1, a2`) は verbatim 出力 (action chain 展開未対応)
- * - guard 式は verbatim 出力 (FDR4 で構文エラーになる可能性あり)
+ * - 状態変数のプロセスパラメータ化未対応 (guard の参照変数は CSPm では未定義のまま)
  *
  * @param diagram - パース済みの AST
+ * @param guards  - ガードタグ → CSPm 式 の辞書 (省略時は置換無し)
  * @returns プロセス定義群を `\n\n` 区切りで連結した CSPm 文字列
  */
-export const generateCspm = (diagram: Diagram): string => {
+export const generateCspm = (
+    diagram: Diagram,
+    guards: Map<string, string> = new Map(),
+): string => {
     const { transitions, composites } = collectAll(diagram.regions);
     const byFrom = groupByFrom(transitions);
 
@@ -150,13 +170,13 @@ export const generateCspm = (diagram: Diagram): string => {
 
     for (const [id, composite] of composites) {
         const outer = byFrom.get(id) ?? [];
-        processes.push(formatComposite(composite, outer));
+        processes.push(formatComposite(composite, outer, guards));
     }
 
     for (const [from, ts] of byFrom) {
         if (isPseudoState(from)) continue;
         if (composites.has(from)) continue;
-        processes.push(formatLeafProcess(from, ts));
+        processes.push(formatLeafProcess(from, ts, guards));
     }
 
     return processes.join("\n\n");
