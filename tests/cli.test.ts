@@ -66,7 +66,7 @@ Deno.test("main: .md input extracts mermaid block and applies guard substitution
     const r = main(["spec.md"], { readFile: () => MARKDOWN_SPEC });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
-    assertEquals(r.stdout.includes("ev & x > 0 -> act -> B"), true);
+    assertEquals(r.stdout.includes("(x > 0) & ev -> act -> B"), true);
 });
 
 Deno.test("main: .md input emits state variable declarations at top", () => {

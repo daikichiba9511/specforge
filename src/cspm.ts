@@ -58,10 +58,13 @@ const actionsPrefix = (actions: string[]): string =>
 const resolveGuard = (raw: string, guards: Map<string, string>): string => guards.get(raw) ?? raw;
 
 const formatLeafBranch = (t: Transition, guards: Map<string, string>): string => {
-    const guard = t.label.guard ? ` & ${resolveGuard(t.label.guard, guards)}` : "";
+    // CSPm precedence: `->` binds tighter than `&`. Canonical guard form is
+    // `cond & event -> ...` parsing as `cond & (event -> ...)`. Parens around
+    // the guard expression keep complex expressions (||, &&, etc.) safe.
+    const guard = t.label.guard ? `(${resolveGuard(t.label.guard, guards)}) & ` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
     const event = t.label.event ?? "tau";
-    return `  ${event}${guard}${actionsSuffix(t.label.actions)} -> ${to}`;
+    return `  ${guard}${event}${actionsSuffix(t.label.actions)} -> ${to}`;
 };
 
 const formatLeafProcess = (
@@ -82,7 +85,7 @@ const regionEntry = (region: Region): string => {
 // Completion transition from a composite (event == null). Emit as a CSP
 // guard / action / target prefix that runs AFTER the composite body SKIPs.
 const formatCompletionBranch = (t: Transition, guards: Map<string, string>): string => {
-    const guard = t.label.guard ? `${resolveGuard(t.label.guard, guards)} & ` : "";
+    const guard = t.label.guard ? `(${resolveGuard(t.label.guard, guards)}) & ` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
     return `${guard}${actionsPrefix(t.label.actions)}${to}`;
 };
@@ -91,9 +94,9 @@ const formatCompletionBranch = (t: Transition, guards: Map<string, string>): str
 // the branch inside the interrupt operator `/\\ (...)`.
 const formatTriggeredBranch = (t: Transition, guards: Map<string, string>): string => {
     const event = t.label.event ?? "tau";
-    const guard = t.label.guard ? ` & ${resolveGuard(t.label.guard, guards)}` : "";
+    const guard = t.label.guard ? `(${resolveGuard(t.label.guard, guards)}) & ` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
-    return `${event}${guard}${actionsSuffix(t.label.actions)} -> ${to}`;
+    return `${guard}${event}${actionsSuffix(t.label.actions)} -> ${to}`;
 };
 
 // Render a composite state as a CSPm process:

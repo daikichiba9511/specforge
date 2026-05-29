@@ -138,7 +138,7 @@ Deno.test("substitutes guard tag from dictionary", () => {
 A --> B : ev [catalog_ok] / act`,
         new Map([["catalog_ok", "catalog_size > 0"]]),
     );
-    assertStringIncludes(out, "ev & catalog_size > 0 -> act -> B");
+    assertStringIncludes(out, "(catalog_size > 0) & ev -> act -> B");
 });
 
 Deno.test("leaves unmapped guard verbatim when not in dictionary", () => {
@@ -147,7 +147,7 @@ Deno.test("leaves unmapped guard verbatim when not in dictionary", () => {
 A --> B : ev [unknown_guard] / act`,
         new Map([["other", "x > 0"]]),
     );
-    assertStringIncludes(out, "ev & unknown_guard -> act -> B");
+    assertStringIncludes(out, "(unknown_guard) & ev -> act -> B");
 });
 
 Deno.test("substitutes guard in completion transition", () => {
@@ -160,7 +160,7 @@ state Outer {
 Outer --> Next : [ok] / done`,
         new Map([["ok", "count > 0"]]),
     );
-    assertStringIncludes(out, "Outer = Inner ; count > 0 & done -> Next");
+    assertStringIncludes(out, "Outer = Inner ; (count > 0) & done -> Next");
 });
 
 Deno.test("substitutes guard in triggered transition (inside /\\)", () => {
@@ -173,7 +173,7 @@ state Outer {
 Outer --> Fault : abort [bad] / alert`,
         new Map([["bad", "err_count > 0"]]),
     );
-    assertStringIncludes(out, "Outer = Inner /\\ (abort & err_count > 0 -> alert -> Fault)");
+    assertStringIncludes(out, "Outer = Inner /\\ ((err_count > 0) & abort -> alert -> Fault)");
 });
 
 Deno.test("emits state variable declarations at top of output", () => {
