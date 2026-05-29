@@ -123,7 +123,10 @@ prefix imports — Bun is fine for local dev iteration.
   metadata の JSON 出力、`--strict` で validation 厳格化、`--bound=N` で TLA+ Domain / CSPm VAL
   の値域 (デフォルト 1) 上書き、`verify` サブコマンドで TLC 検証
 - Parser tests + cspm tests + tla tests + spec_doc tests + cli tests + verify tests + validate tests
-- Example spec (`examples/traffic-light.mmd`)
+- Example specs (`examples/`) — `traffic-light.mmd` (最小) + `vending-machine.md` (小) +
+  `db-connection-pool.md` (中) + `producer-consumer.md` (composite+直交領域) + `order-workflow.md`
+  (大) + `README.md` (一覧と使い分け)。 全 4 つの `.md` 例は `deno task verify --bound=3` で TLC が
+  deadlock-free を確認済み
 - CI workflow (`deno fmt --check`, `deno lint`, `deno check`, `deno test`)
 - Benches (`bench/*_bench.ts`) + before/after 比較 (`bench/compare.ts`) — `docs/perf.md`
 - **Self-dogfood 達成**: `deno task verify docs/behavior.md` で specforge 自身のパイプライン
