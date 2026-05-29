@@ -43,6 +43,8 @@ formal property check side becomes a button-press.
   termination
 - **[`docs/perf.md`](./docs/perf.md)** — bench (`deno task bench`) と before/after 比較
   (`deno task bench:compare`)、CPU プロファイル取得手順、最適化を始める時の着目ポイント
+- **[`tasks/todo.md`](./tasks/todo.md)** — 残タスクの実作業リスト (優先度 / 規模付き)。 CLAUDE.md の
+  `Pending` セクションを展開した詳細版
 
 ## The input language: `spec-behavior` subset
 
