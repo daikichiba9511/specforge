@@ -1,0 +1,17 @@
+# Deno
+.deno/
+
+# Build artifacts
+dist/
+bin/
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Logs / temp
+*.log
+*.tmp
