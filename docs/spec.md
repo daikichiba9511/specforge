@@ -175,8 +175,11 @@ Validation pass (§5.4) で式を tokenize し、`(`/`)` の対応や未知 ID �
 
 例: `Authenticating --> Locked : internal_check [fail_count >= 5] / lock_account`
 
-specforge は `internal_` プレフィックスで始まるイベントを内部遷移と認識し、CSPm 変換時に隠蔽イベント
-(`\ {internal_*}`) として扱う候補にする (§6.4)。
+**現状**: specforge は `internal_` プレフィックスを **特別扱いしない** (通常の event と同様 channel
+として宣言、TLA+ では action 名として emit する)。 命名規約として「読み手にとって外部
+イベントか内部発火か区別がつく」点だけ確保する。 将来 CSPm 側で `\ {internal_*}` 形式の hiding
+を入れる案あり (CLAUDE.md Pending 参照)。 TLA+ には hiding に直接対応する機構が無いため、 TLA+
+側は何もしない予定。
 
 ---
 

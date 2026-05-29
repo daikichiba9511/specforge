@@ -117,16 +117,16 @@ prefix imports — Bun is fine for local dev iteration.
   tlc2.TLC` を subprocess 実行 → 結果サマリ。java と tla2tools.jar
   の検出付き
 - **Validation pass (`src/validate.ts`)** — parse 後に V001 (guard 辞書漏れ) / V002 (guard 式の
-  未宣言変数) / V003 (composite region の `[*] -->` 入口欠落) を warning 報告。`--strict` で warning
-  → failure 昇格
+  未宣言変数) / V003 (composite region の `[*] -->` 入口欠落) / V004 (未到達 state) を warning
+  報告。`--strict` で warning → failure 昇格
 - CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、デフォルトは CSPm、`--tla` で TLA+、`--json` で AST +
   metadata の JSON 出力、`--strict` で validation 厳格化、`--bound=N` で TLA+ Domain / CSPm VAL
   の値域 (デフォルト 1) 上書き、`verify` サブコマンドで TLC 検証
 - Parser tests + cspm tests + tla tests + spec_doc tests + cli tests + verify tests + validate tests
-- Example specs (`examples/`) — `traffic-light.mmd` (最小) + `vending-machine.md` (小) +
-  `db-connection-pool.md` (中) + `producer-consumer.md` (composite+直交領域) + `order-workflow.md`
-  (大) + `README.md` (一覧と使い分け)。 全 4 つの `.md` 例は `deno task verify --bound=3` で TLC が
-  deadlock-free を確認済み
+- Example specs (`examples/`) — 正常系 6 例 (`traffic-light.mmd` / `vending-machine.md` /
+  `db-connection-pool.md` / `producer-consumer.md` / `order-workflow.md` / `internal-events.md`) +
+  意図的に問題のある 2 例 (`deadlock.md` で TLC の deadlock 検出を実演、 `unreachable-state.md` で
+  V004 warning を実演) + `README.md` (一覧と使い分け)
 - CI workflow (`deno fmt --check`, `deno lint`, `deno check`, `deno test`)
 - Benches (`bench/*_bench.ts`) + before/after 比較 (`bench/compare.ts`) — `docs/perf.md`
 - **Self-dogfood 達成**: `deno task verify docs/behavior.md` で specforge 自身のパイプライン

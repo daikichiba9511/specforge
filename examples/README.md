@@ -6,6 +6,8 @@
 
 ## 例の一覧
 
+### 正しく書けた例 (verified ok)
+
 | 例                                                 | 規模   | カバー機能                                                                | 検証結果 (bound=3)            |
 | -------------------------------------------------- | ------ | ------------------------------------------------------------------------- | ----------------------------- |
 | [`traffic-light.mmd`](./traffic-light.mmd)         | 最小   | flat states + ガード (辞書無しで warn 3 件、教育用)                       | (`.mmd` 形式、TLC 用ではない) |
@@ -13,6 +15,14 @@
 | [`db-connection-pool.md`](./db-connection-pool.md) | 中     | 複数 state var + 複数 payload event + retry / shutdown 分岐               | 218 / 47 distinct             |
 | [`producer-consumer.md`](./producer-consumer.md)   | 小〜中 | composite + **直交領域** (Producer / Consumer 並行) + 完了/triggered exit | 211 / 68 (bound=2)            |
 | [`order-workflow.md`](./order-workflow.md)         | 大     | composite + 直交領域 + 複数 state var + payload + retry + 多経路          | 2744 / 512 distinct           |
+| [`internal-events.md`](./internal-events.md)       | 小     | `internal_xxx` 命名規約 + state var + payload binding                     | 35 / 10 distinct              |
+
+### 意図的に問題のある例 (specforge / TLC の検出機能を実演)
+
+| 例                                               | 何を実演するか                                              | 期待される挙動                                                          |
+| ------------------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [`deadlock.md`](./deadlock.md)                   | composite region 内に出口なしの state → 完了不可で TLC 検出 | `verify` → `Error: Deadlock reached.` (exit 11)                         |
+| [`unreachable-state.md`](./unreachable-state.md) | 宣言されているが誰からも到達されない state → V004 warning   | `cli` で `warn V004: state 'Orphan' is unreachable`、`verify` 自体は ok |
 
 ## 各例の使い分け
 
@@ -28,6 +38,15 @@
 - **order-workflow**: 全機能を組み合わせたリアルなサンプル。 EC サイトの注文ライフサイクル (Cart →
   Checkout → Confirmed → Shipped → Delivered / Cancelled / Returned) を retry / 並行 処理 /
   異常系も含めて書いた。 spec-behavior skill の review モードで lint するときの 練習対象としても
+- **internal-events**: `internal_xxx` 命名規約のデモ。 外部 (ユーザ/管理者) からのトリガーと、
+  内部状態の検査による自発発火を命名で区別する。 ロックアウト検出を例に使用。 現状 specforge は
+  internal 接頭辞を特別扱いしない (CSPm の hiding は Pending)
+- **deadlock**: composite region 内に `[*]` への経路がない state を入れて、 region が完了 でき ない
+  → 全 region `_done` を要求する完了遷移が永遠に発火不能 → TLC が deadlock 検出。 「forgotten error
+  recovery」のアンチパターン
+- **unreachable-state**: 宣言だけ存在して誰からも到達されない state を含む。 specforge の validation
+  pass (V004) で warn が出る。 TLC は到達不能な state を見ないので verify 自体は通る ことが「TLC
+  と静的解析が補完関係にある」ことを示すデモ
 
 ## 実行例
 

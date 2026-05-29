@@ -135,6 +135,49 @@ Deno.test("formatIssue includes code, message, hint", () => {
     assertStringIncludes(out, "hint: do X instead");
 });
 
+Deno.test("V004: state declared but no transition leads to it → warning", () => {
+    const report = validateOf(`stateDiagram-v2
+state Orphan
+[*] --> A
+A --> B
+B --> [*]
+Orphan --> B`);
+    const v004 = report.issues.filter((i) => i.code === "V004");
+    assertEquals(v004.length, 1);
+    assertStringIncludes(v004[0].message, "Orphan");
+});
+
+Deno.test("V004: every declared state reachable → no warning", () => {
+    const report = validateOf(`stateDiagram-v2
+[*] --> A
+A --> B
+B --> [*]`);
+    assertEquals(report.issues.filter((i) => i.code === "V004").length, 0);
+});
+
+Deno.test("V004: alias with reachable transition → no warning", () => {
+    const report = validateOf(`stateDiagram-v2
+state "開始" as Start
+state "終了" as End
+[*] --> Start
+Start --> End
+End --> [*]`);
+    assertEquals(report.issues.filter((i) => i.code === "V004").length, 0);
+});
+
+Deno.test("V004: composite ID with inbound transition → reachable", () => {
+    const report = validateOf(`stateDiagram-v2
+state Outer {
+    [*] --> Inner
+    Inner --> [*]
+}
+[*] --> Outer
+Outer --> Done : / finish
+Done --> [*]`);
+    // Outer は [*] --> Outer の to なので reachable、Inner も [*] --> Inner の to なので reachable
+    assertEquals(report.issues.filter((i) => i.code === "V004").length, 0);
+});
+
 Deno.test("clean spec produces no issues", () => {
     const report = validateOf(
         `stateDiagram-v2

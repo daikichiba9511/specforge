@@ -90,6 +90,7 @@ const regionHasEntry = (region: Region): boolean => {
  * - **V002**: ガード式が state var にも event payload field にも無い識別子を参照している
  * - **V003**: composite の region に `[*] --> <entry>` の初期遷移が無い (region 入口が SKIP に
  *   フォールバックして TLA+ / CSPm の意味がおかしくなる)
+ * - **V004**: state が宣言されているが、 どの transition の `to` にも現れない (= 未到達)
  *
  * 各 issue は `level: "warning"` で返す。CLI 側 `--strict` で warning → 失敗に昇格させる。
  *
@@ -157,7 +158,49 @@ export const validate = (diagram: Diagram, doc: SpecDoc): ValidationReport => {
         }
     }
 
+    // V004: 未到達 state — 宣言されているが誰の to にもならない
+    const reachable = new Set<string>();
+    for (const t of transitions) {
+        if (!isPseudoState(t.to)) reachable.add(t.to);
+    }
+    const declared = collectDeclaredStates(diagram);
+    for (const name of declared) {
+        if (!reachable.has(name)) {
+            issues.push({
+                level: "warning",
+                code: "V004",
+                message:
+                    `state '${name}' is declared but unreachable (no transition has it as 'to')`,
+                suggestion: `Add a transition '<from> --> ${name}' from a reachable state, ` +
+                    `or remove the declaration if intentional.`,
+            });
+        }
+    }
+
     return { issues };
+};
+
+// 状態として宣言されているもの全て (composite ID + alias ID + transition の from/to に
+// 現れた非疑似 state)。
+const collectDeclaredStates = (diagram: Diagram): Set<string> => {
+    const declared = new Set<string>();
+    const recur = (regions: Region[]): void => {
+        for (const region of regions) {
+            for (const stmt of region.stmts) {
+                if (stmt.kind === "composite") {
+                    declared.add(stmt.id);
+                    recur(stmt.regions);
+                } else if (stmt.kind === "alias") {
+                    declared.add(stmt.id);
+                } else if (stmt.kind === "transition") {
+                    if (!isPseudoState(stmt.from)) declared.add(stmt.from);
+                    if (!isPseudoState(stmt.to)) declared.add(stmt.to);
+                }
+            }
+        }
+    };
+    recur(diagram.regions);
+    return declared;
 };
 
 /**
