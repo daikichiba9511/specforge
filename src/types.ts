@@ -1,5 +1,11 @@
 export type StateRef = string;
 
+// 擬似状態 (initial / final) の AST 上での canonical 表現。
+// parser は入力中の `[*]` をそのままこの値として AST に格納し、
+// cspm など消費側はここを参照して判定する (Connascence of Values 回避)。
+export const PSEUDO_STATE = "[*]" as const;
+export type PseudoState = typeof PSEUDO_STATE;
+
 export type Label = {
     event: string | null;
     guard: string | null;
