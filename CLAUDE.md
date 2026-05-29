@@ -107,9 +107,11 @@ prefix imports — Bun is fine for local dev iteration.
   `?` 受信パターンに変換 (Phase 3), **プロセスパラメータ threading + Spec entry point** (Phase 4)
 - `.md` 入力対応 (`src/spec_doc.ts`) — Mermaid block 抽出 + `### ガード定義` 表をガード辞書化 +
   `### 共有状態` 表から変数名抽出 + `### イベント契約` 表から event payload 抽出
-- **TLA+ generator (`src/tla.ts`)** — Phase A (flat states): VARIABLES / Init / Next / Spec、 各
-  transition を `<From>_<event>_<To>` action として emit、terminal state は Stutter で処理。
-  composite / 直交領域は平坦化 (Phase B 送り)
+- **TLA+ generator (`src/tla.ts`)** — Phase A + B + 2: VARIABLES / Init / Next / Spec、各 transition
+  を context-aware (top / region / 入退場) で action 化。composite は `<comp>_r<N>` region 変数 +
+  `_inactive`/入口/`_done` 3 値で並列領域を track (Phase B)。event payload field と state var 名の
+  一致を `\E new_<var> \in Domain:` で非決定 bind して guard と次状態に thread (Phase 2)。 C
+  風演算子 (`==`/`!=`/`&&`/`||`) を TLA+ 流に自動変換
 - **`specforge verify` (`src/verify.ts`)** — spec → TLA+ → 一時ファイル →
   `java -cp tla2tools.jar
   tlc2.TLC` を subprocess 実行 → 結果サマリ。java と tla2tools.jar
@@ -123,18 +125,17 @@ prefix imports — Bun is fine for local dev iteration.
 
 **Pending (next-session priorities, roughly in order)**:
 
-1. **TLA+ Phase B (composite / 直交領域)**: 現状 composite は state として平坦化されるだけで
-   parallel composition の意味が失われる。hitl spec の `ParallelSetup` を TLA+ で正しく表現する には
-   region ごとの phase 変数 + completion 同期が必要。
-2. **TLA+ event payload binding**: 現状 state var は遷移で UNCHANGED 固定。 event payload を
-   `\E
-   new_var \in Domain` で非決定的に受け取って `var' = new_var` する形にすると、CSPm Phase 3+4
-   相当の意味論になる。 hitl の guard `catalog_size > 0` 等が真に効くようになる。
-3. **Validation pass**: post-parse pass で「ガード辞書漏れ」「未宣言変数の参照」「未到達 state」
-   等を warning 報告。fix 候補も併記すると UX 向上。
-4. **JSON output mode** for piping into other tools.
-5. **Self-dogfood milestone**: `specforge verify docs/behavior.md` で specforge 自身のパイプライン
-   を TLC で検証。Phase A+C で技術的に可能、Phase B でより意味のある検証になる。
+1. **Validation pass**: post-parse pass で「ガード辞書漏れ」「未宣言変数の参照」「未到達 state」
+   「event payload field 名と state var 名のミスマッチ」等を warning 報告。fix 候補も併記して UX
+   改善。
+2. **Self-dogfood milestone**: `specforge verify docs/behavior.md` で specforge 自身のパイプライン
+   を TLC で検証。Phase B + 2 が完了したのでここから実行可能。`docs/behavior.md` の state 機械を
+   `.md` 化して動かす。
+3. **JSON output mode** for piping into other tools.
+4. **Liveness / fairness 検証**: 現状 `assert Spec :[deadlock free]` 相当のみ。 weak/strong fairness
+   仮定を `.cfg` に書く、`PROPERTY <>Terminated` 形の liveness check を生成する形で拡張可能。
+5. **状態空間の bound 調整**: `Domain == 0..1` 固定だと数値比較の意味が薄い (`>0` と `==0` の 2 値
+   しか区別できない)。CLI flag や spec 内 annotation で `0..N` を上書きできるようにする。
 6. **CSPm 側の磨き込み**: FDR4 で動かす場合のテスト (FDR4 を手動インストールしたら)、もしくは FDR4
    を諦めて CSPm 出力を archive 化する選択。
 7. **Action update semantics (将来)**: action による state var 更新セマンティクス。AST 拡張 +

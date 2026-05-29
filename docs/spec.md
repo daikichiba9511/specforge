@@ -370,17 +370,21 @@ specforge は同じ AST から 2 つの形式に変換できる:
 - **TLA+** (`src/tla.ts`): TLC 入力。状態機械 + 時相論理。`deno task cli --tla spec.md` または
   `deno task verify spec.md` (TLC で検証まで実行)
 
-TLA+ 変換の概要 (Phase A: flat states):
+TLA+ 変換の概要 (Phase A + B + 2):
 
 - state → `phase` 変数の値 (`phase \in {"A", "B", ...}`)
 - state var → TLA+ 変数 (`VARIABLES phase, count, ...`)、初期値 0
-- 各 transition → action 述語
-  `<From>_<event>_<To> == phase = "From" /\ guard /\ phase' = "To" /\ UNCHANGED <<...>>`
-- guard → conjunct (ガード辞書で式に置換)
+- 各 transition → action 述語 `<From>_<event>_<To> == phase = "From" /\ guard /\ phase' = "To"`
+- guard → conjunct (ガード辞書で式に置換、`==`/`!=`/`&&`/`||` は TLA+ 流に自動変換)
 - `X --> [*]` → X を TerminalStates に追加、`Stutter == phase \in TerminalStates /\ UNCHANGED vars`
-  で TLC の deadlock 検出を回避
-- composite / 直交領域は **平坦化** (Phase B 送り)、parallel composition の意味は失われる
-- event payload binding は **未対応** (Phase B 送り)、state var は遷移で UNCHANGED 固定
+  で TLC の deadlock 誤検出を回避
+- **composite / 直交領域** (Phase B): 各 region に `<composite>_r<N>` 変数を追加し、`"_inactive"` /
+  入口 state / `"_done"` の 3 値で region 進行を track。composite 完了遷移は全 region が `_done` を
+  precondition、triggered exit は event 発火で region 状態に関わらず割り込み
+- **event payload binding** (Phase 2): event の payload field が state var 名と一致すれば、
+  `\E new_<var> \in Domain:` で非決定的に bind して `<var>' = new_<var>` で更新。 guard 内の該当
+  変数参照は `new_<var>` に rename される。 `Domain == 0..1` で値域を最小に保つ (TLC の状態空間
+  爆発を抑制)
 
 以下は CSPm 側の方針 (informative)。実装は `src/cspm.ts` を参照。
 

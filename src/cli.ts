@@ -78,7 +78,7 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
         return { kind: "failure", exitCode: 1, stderr: formatParseError(result.error) };
     }
     const stdout = useTla
-        ? generateTla(result.value, doc.guards, doc.stateVars)
+        ? generateTla(result.value, doc.guards, doc.stateVars, doc.eventPayloads)
         : generateCspm(result.value, doc.guards, doc.stateVars, doc.eventPayloads);
     return { kind: "success", stdout };
 };

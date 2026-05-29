@@ -186,7 +186,13 @@ export const verify = (
         };
     }
 
-    const tla = generateTla(parsed.value, doc.guards, doc.stateVars, MODULE_NAME);
+    const tla = generateTla(
+        parsed.value,
+        doc.guards,
+        doc.stateVars,
+        doc.eventPayloads,
+        MODULE_NAME,
+    );
 
     let tempDir: string;
     try {

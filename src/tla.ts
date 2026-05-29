@@ -5,7 +5,6 @@ type Transition = Extract<Stmt, { kind: "transition" }>;
 type Composite = Extract<Stmt, { kind: "composite" }>;
 
 // 各 transition が「トップレベル」か「composite C の region #N」のどちらに属するか。
-// region 内部の遷移と top-level の遷移では emit 形が違うので区別が必要。
 type TransitionContext =
     | { kind: "top" }
     | { kind: "region"; compositeId: string; regionIdx: number };
@@ -15,11 +14,10 @@ type Located<T> = { t: T; context: TransitionContext };
 type Analysis = {
     transitions: Located<Transition>[];
     composites: Map<string, Composite>;
-    topStates: Set<string>; // phase 変数が取りうる値の集合 (leaf + composite ID)
+    topStates: Set<string>;
     regionEntries: Map<string, string>; // key: `${compositeId}:${regionIdx}` → 入口 state 名
 };
 
-// 状態機械全体を歩いて各 transition の context を確定する。
 const analyze = (diagram: Diagram): Analysis => {
     const transitions: Located<Transition>[] = [];
     const composites = new Map<string, Composite>();
@@ -76,8 +74,6 @@ const findInitialState = (diagram: Diagram): string | null => {
     return null;
 };
 
-// トップレベルの非疑似 from から非疑似 to への通常遷移を全て拾い、
-// `--> [*]` で完了する from を terminal とみなす。
 const collectTerminalStates = (analysis: Analysis): Set<string> => {
     const terminal = new Set<string>();
     for (const { t, context } of analysis.transitions) {
@@ -88,7 +84,6 @@ const collectTerminalStates = (analysis: Analysis): Set<string> => {
 };
 
 // CSPm/C 風の演算子 (`==`, `!=`, `&&`, `||`) を TLA+ 流 (`=`, `/=`, `/\\`, `\\/`) に置換する。
-// 単純な文字列置換なので、文字列リテラル内に `==` 等が含まれるエッジケースには弱い。
 const toTlaOperators = (expr: string): string =>
     expr
         .replace(/!=/g, "/=")
@@ -99,11 +94,19 @@ const toTlaOperators = (expr: string): string =>
 const resolveGuard = (raw: string, guards: Map<string, string>): string =>
     toTlaOperators(guards.get(raw) ?? raw);
 
-// composite C, region N に対応する region phase 変数名。
+// state var 名の word-boundary 出現を `new_<name>` にリネームする (payload binding 用)。
+const renameInGuard = (expr: string, names: string[]): string => {
+    let result = expr;
+    for (const name of names) {
+        const re = new RegExp(`\\b${name}\\b`, "g");
+        result = result.replace(re, `new_${name}`);
+    }
+    return result;
+};
+
 const regionVarName = (compositeId: string, regionIdx: number): string =>
     `${compositeId.toLowerCase()}_r${regionIdx}`;
 
-// composite の region 変数を全て列挙する (出力順を安定化させるため id でソート)。
 const allRegionVars = (composites: Map<string, Composite>): string[] => {
     const result: string[] = [];
     const ids = Array.from(composites.keys()).sort();
@@ -116,11 +119,9 @@ const allRegionVars = (composites: Map<string, Composite>): string[] => {
     return result;
 };
 
-// 文字列のサニタイズ: action 名に使える形に。`[*]` などの記号を Final 等に置換。
 const sanitize = (s: string): string =>
     s.replace(/\[\*\]/g, "Final").replace(/[^A-Za-z0-9_]/g, "_");
 
-// action 名を作る。重複は suffix `_2`, `_3`, ... を付ける。
 const uniqueName = (base: string, used: Map<string, number>): string => {
     const n = (used.get(base) ?? 0) + 1;
     used.set(base, n);
@@ -132,142 +133,204 @@ const REGION_INACTIVE = `"_inactive"`;
 
 type EmitContext = {
     stateVars: string[];
-    regionVars: string[]; // 全 composite の全 region 変数 (ソート済)
+    regionVars: string[];
     composites: Map<string, Composite>;
     guards: Map<string, string>;
+    eventPayloads: Map<string, string[]>;
     used: Map<string, number>;
 };
 
-// composite C に入る遷移の action body: phase を C に、C の各 region を entry 状態に初期化、
-// 他の region は inactive 維持、state var は UNCHANGED。
+// transition の event payload と state var の交差 (= この遷移で更新される state var)。
+const boundStateVarsForTransition = (t: Transition, ctx: EmitContext): string[] => {
+    if (t.label.event === null) return [];
+    const payload = ctx.eventPayloads.get(t.label.event);
+    if (!payload) return [];
+    return payload.filter((f) => ctx.stateVars.includes(f));
+};
+
+// 1 つの action body を組み立てる共通骨格。
+//
+// payload binding 有りの場合は `\E new_<var1>, ... \in Domain:` でラップし、guard と
+// 引数依存の primed 更新を内側に置く。 binding 無しなら通常の `/\` リスト。
+type ActionParts = {
+    preconditions: string[]; // 例: `phase = "From"`, `outer_r0 = "A"`
+    completionPreconds: string[]; // composite 完了遷移用: `outer_r0 = "_done"` 等
+    guard: string | null; // 解決済み (まだ binding rename していない)
+    primedUpdates: string[]; // 例: `phase' = "To"`, `outer_r0' = "_done"`
+    boundVars: string[]; // event payload と state var の交差
+    unchangedVars: string[];
+};
+
+const buildBody = (a: ActionParts): string => {
+    const outer = "    ";
+    const inner = "         ";
+    const lines: string[] = [];
+
+    for (const p of a.preconditions) lines.push(`${outer}/\\ ${p}`);
+    for (const p of a.completionPreconds) lines.push(`${outer}/\\ ${p}`);
+
+    if (a.boundVars.length === 0) {
+        if (a.guard) lines.push(`${outer}/\\ ${a.guard}`);
+        for (const u of a.primedUpdates) lines.push(`${outer}/\\ ${u}`);
+    } else {
+        const newVars = a.boundVars.map((v) => `new_${v}`).join(", ");
+        lines.push(`${outer}/\\ \\E ${newVars} \\in Domain:`);
+        if (a.guard) {
+            lines.push(`${inner}/\\ ${renameInGuard(a.guard, a.boundVars)}`);
+        }
+        for (const u of a.primedUpdates) {
+            lines.push(`${inner}/\\ ${u}`);
+        }
+        for (const v of a.boundVars) {
+            lines.push(`${inner}/\\ ${v}' = new_${v}`);
+        }
+    }
+
+    if (a.unchangedVars.length > 0) {
+        lines.push(`${outer}/\\ UNCHANGED <<${a.unchangedVars.join(", ")}>>`);
+    }
+    return lines.join("\n");
+};
+
+const formatTopAction = (t: Transition, ctx: EmitContext): string => {
+    const bound = boundStateVarsForTransition(t, ctx);
+    return buildBody({
+        preconditions: [`phase = "${t.from}"`],
+        completionPreconds: [],
+        guard: t.label.guard ? resolveGuard(t.label.guard, ctx.guards) : null,
+        primedUpdates: [`phase' = "${t.to}"`],
+        boundVars: bound,
+        unchangedVars: [
+            ...ctx.stateVars.filter((v) => !bound.includes(v)),
+            ...ctx.regionVars,
+        ],
+    });
+};
+
 const formatEnterCompositeAction = (
     t: Transition,
     targetComposite: string,
     ctx: EmitContext,
     regionEntries: Map<string, string>,
 ): string => {
-    const parts: string[] = [`/\\ phase = "${t.from}"`];
-    if (t.label.guard) parts.push(`/\\ ${resolveGuard(t.label.guard, ctx.guards)}`);
-    parts.push(`/\\ phase' = "${targetComposite}"`);
-
+    const bound = boundStateVarsForTransition(t, ctx);
     const target = ctx.composites.get(targetComposite)!;
     const initRegions: string[] = [];
+    const regionInits: string[] = [];
     for (let i = 0; i < target.regions.length; i++) {
         const entry = regionEntries.get(`${targetComposite}:${i}`) ?? "_inactive";
-        const varName = regionVarName(targetComposite, i);
-        parts.push(`/\\ ${varName}' = "${entry}"`);
-        initRegions.push(varName);
+        const v = regionVarName(targetComposite, i);
+        regionInits.push(`${v}' = "${entry}"`);
+        initRegions.push(v);
     }
-    const unchangedRegions = ctx.regionVars.filter((r) => !initRegions.includes(r));
-    const unchanged = [...ctx.stateVars, ...unchangedRegions];
-    if (unchanged.length > 0) parts.push(`/\\ UNCHANGED <<${unchanged.join(", ")}>>`);
-    return parts.map((p) => `    ${p}`).join("\n");
+    return buildBody({
+        preconditions: [`phase = "${t.from}"`],
+        completionPreconds: [],
+        guard: t.label.guard ? resolveGuard(t.label.guard, ctx.guards) : null,
+        primedUpdates: [`phase' = "${targetComposite}"`, ...regionInits],
+        boundVars: bound,
+        unchangedVars: [
+            ...ctx.stateVars.filter((v) => !bound.includes(v)),
+            ...ctx.regionVars.filter((r) => !initRegions.includes(r)),
+        ],
+    });
 };
 
-// composite C から外への遷移の action body: phase を to に、C の region を inactive にリセット。
-// 完了遷移 (event === null) なら C の全 region が "_done" であることを precondition に追加。
 const formatExitCompositeAction = (
     t: Transition,
     sourceComposite: string,
     ctx: EmitContext,
 ): string => {
-    const parts: string[] = [`/\\ phase = "${sourceComposite}"`];
-
+    const bound = boundStateVarsForTransition(t, ctx);
     const source = ctx.composites.get(sourceComposite)!;
     const isCompletion = t.label.event === null;
+
+    const completionPreconds: string[] = [];
     if (isCompletion) {
         for (let i = 0; i < source.regions.length; i++) {
-            const v = regionVarName(sourceComposite, i);
-            parts.push(`/\\ ${v} = ${REGION_DONE}`);
+            completionPreconds.push(`${regionVarName(sourceComposite, i)} = ${REGION_DONE}`);
         }
     }
-    if (t.label.guard) parts.push(`/\\ ${resolveGuard(t.label.guard, ctx.guards)}`);
-    parts.push(`/\\ phase' = "${isPseudoState(t.to) ? "FINAL" : t.to}"`);
 
     const resetRegions: string[] = [];
+    const regionResets: string[] = [];
     for (let i = 0; i < source.regions.length; i++) {
         const v = regionVarName(sourceComposite, i);
-        parts.push(`/\\ ${v}' = ${REGION_INACTIVE}`);
+        regionResets.push(`${v}' = ${REGION_INACTIVE}`);
         resetRegions.push(v);
     }
-    const unchangedRegions = ctx.regionVars.filter((r) => !resetRegions.includes(r));
-    const unchanged = [...ctx.stateVars, ...unchangedRegions];
-    if (unchanged.length > 0) parts.push(`/\\ UNCHANGED <<${unchanged.join(", ")}>>`);
-    return parts.map((p) => `    ${p}`).join("\n");
+    const target = isPseudoState(t.to) ? "FINAL" : t.to;
+
+    return buildBody({
+        preconditions: [`phase = "${sourceComposite}"`],
+        completionPreconds,
+        guard: t.label.guard ? resolveGuard(t.label.guard, ctx.guards) : null,
+        primedUpdates: [`phase' = "${target}"`, ...regionResets],
+        boundVars: bound,
+        unchangedVars: [
+            ...ctx.stateVars.filter((v) => !bound.includes(v)),
+            ...ctx.regionVars.filter((r) => !resetRegions.includes(r)),
+        ],
+    });
 };
 
-// region 内部の遷移の action body: 親 composite の phase + 自 region phase の更新のみ。
-// to が [*] なら region 完了として `_done` に。
 const formatRegionAction = (
     t: Transition,
     compositeId: string,
     regionIdx: number,
     ctx: EmitContext,
 ): string => {
+    const bound = boundStateVarsForTransition(t, ctx);
     const regionVar = regionVarName(compositeId, regionIdx);
-    const parts: string[] = [
-        `/\\ phase = "${compositeId}"`,
-        `/\\ ${regionVar} = "${t.from}"`,
-    ];
-    if (t.label.guard) parts.push(`/\\ ${resolveGuard(t.label.guard, ctx.guards)}`);
-    const newRegionValue = isPseudoState(t.to) ? REGION_DONE : `"${t.to}"`;
-    parts.push(`/\\ ${regionVar}' = ${newRegionValue}`);
-
-    const otherRegions = ctx.regionVars.filter((r) => r !== regionVar);
-    const unchanged = ["phase", ...ctx.stateVars, ...otherRegions];
-    if (unchanged.length > 0) parts.push(`/\\ UNCHANGED <<${unchanged.join(", ")}>>`);
-    return parts.map((p) => `    ${p}`).join("\n");
-};
-
-// 通常のトップレベル間遷移 (composite を介さない) の action body。
-const formatTopAction = (t: Transition, ctx: EmitContext): string => {
-    const parts: string[] = [`/\\ phase = "${t.from}"`];
-    if (t.label.guard) parts.push(`/\\ ${resolveGuard(t.label.guard, ctx.guards)}`);
-    parts.push(`/\\ phase' = "${t.to}"`);
-    const unchanged = [...ctx.stateVars, ...ctx.regionVars];
-    if (unchanged.length > 0) parts.push(`/\\ UNCHANGED <<${unchanged.join(", ")}>>`);
-    return parts.map((p) => `    ${p}`).join("\n");
+    const newValue = isPseudoState(t.to) ? REGION_DONE : `"${t.to}"`;
+    return buildBody({
+        preconditions: [`phase = "${compositeId}"`, `${regionVar} = "${t.from}"`],
+        completionPreconds: [],
+        guard: t.label.guard ? resolveGuard(t.label.guard, ctx.guards) : null,
+        primedUpdates: [`${regionVar}' = ${newValue}`],
+        boundVars: bound,
+        unchangedVars: [
+            "phase",
+            ...ctx.stateVars.filter((v) => !bound.includes(v)),
+            ...ctx.regionVars.filter((r) => r !== regionVar),
+        ],
+    });
 };
 
 const formatStateSet = (states: Set<string>): string =>
     `{${Array.from(states).map((s) => `"${s}"`).join(", ")}}`;
 
+const hasAnyPayloadBinding = (analysis: Analysis, ctx: EmitContext): boolean => {
+    for (const { t } of analysis.transitions) {
+        if (boundStateVarsForTransition(t, ctx).length > 0) return true;
+    }
+    return false;
+};
+
 /**
- * {@link Diagram} から TLA+ (TLC 入力) 文字列を生成する (Phase A + B)。
+ * {@link Diagram} から TLA+ (TLC 入力) 文字列を生成する。
  *
- * 構造:
- * 1. `MODULE <moduleName>` ヘッダ
- * 2. `VARIABLES phase, <state_vars>, <region_vars>` 宣言。region 変数は composite ごとに
- *    `<composite_id>_r<N>` で命名 (例: `parallelsetup_r0`)。region 変数は
- *    `"_inactive"` (外部) / 入口 state 名 (進行中) / `"_done"` (完了) のいずれかを取る
- * 3. `Init`: 初期 state (`[*] --> X`) + 各 state var = 0 + 全 region 変数 `_inactive`。
- *    初期 state が composite なら region 変数も入口 state に
- * 4. 各 transition を context に応じて action として emit:
- *    - top → top: `phase = From /\ guard /\ phase' = To /\ UNCHANGED <<other vars>>`
- *    - top → composite: 上記 + composite の region 変数を入口 state に init
- *    - composite → top (完了遷移、event=null): 全 region が `_done` を precondition、
- *      region を `_inactive` にリセット
- *    - composite → top (triggered、event!=null): event に応じて発火、region をリセット
- *    - region 内部: `phase = composite /\ region_var = From /\ region_var' = To`
- *    - region → `[*]`: region_var を `_done` に
- * 5. `Stutter == phase \in TerminalStates /\ UNCHANGED vars` (TLC deadlock 検出を回避)
- * 6. `Next == \/ action1 \/ ... \/ Stutter`
- * 7. `Spec == Init /\ [][Next]_vars`
+ * Phase A (flat) + Phase B (composite/直交領域) + Phase 2 (event payload binding) 対応:
  *
- * 現状の制約 (Phase 2+ で対応予定):
- * - event payload binding 未対応 (state var は遷移で UNCHANGED 固定)
- * - 入れ子 composite (composite 内の composite) は未検証
- * - action の semantics は無視 (TLA+ 上に乗らない)
+ * - 各 transition は context (top / region) に応じて action body を組み立てる
+ * - composite には region 変数 `<composite>_r<N>` を追加し、入口/_done/_inactive で region 進行を track
+ * - event payload field 名が state var 名と一致する場合、 `\E new_<var> \in Domain:` で
+ *   非決定的に値を bind し、guard 内の変数参照を rename、`<var>' = new_<var>` で更新
+ * - Domain は `0..1` 固定 (TLC の状態空間を小さく保つ)
+ * - terminal state は `Stutter == phase \in TerminalStates /\ UNCHANGED vars` で TLC の
+ *   deadlock false-positive を回避
  *
- * @param diagram     - パース済みの AST
- * @param guards      - ガードタグ → TLA+ 式 の辞書 (省略時は置換無し)
- * @param stateVars   - state var 名のリスト (省略時は phase のみ)
- * @param moduleName  - MODULE 名 (省略時 "Spec")
+ * @param diagram       - パース済みの AST
+ * @param guards        - ガードタグ → TLA+ 式 の辞書
+ * @param stateVars     - state var 名のリスト
+ * @param eventPayloads - event → payload field 名のリスト (省略時は binding 無し)
+ * @param moduleName    - MODULE 名 (省略時 "Spec")
  */
 export const generateTla = (
     diagram: Diagram,
     guards: Map<string, string> = new Map(),
     stateVars: string[] = [],
+    eventPayloads: Map<string, string[]> = new Map(),
     moduleName: string = "Spec",
 ): string => {
     const analysis = analyze(diagram);
@@ -276,15 +339,17 @@ export const generateTla = (
 
     const regionVars = allRegionVars(analysis.composites);
     const allVars = ["phase", ...stateVars, ...regionVars];
-    const varsTuple = `<<${allVars.join(", ")}>>`;
 
     const ctx: EmitContext = {
         stateVars,
         regionVars,
         composites: analysis.composites,
         guards,
+        eventPayloads,
         used: new Map(),
     };
+
+    const needDomain = hasAnyPayloadBinding(analysis, ctx);
 
     const lines: string[] = [];
     lines.push(`---- MODULE ${moduleName} ----`);
@@ -294,8 +359,13 @@ export const generateTla = (
     if (allVars.length === 1) lines.push(`VARIABLE phase`);
     else lines.push(`VARIABLES ${allVars.join(", ")}`);
     lines.push("");
-    lines.push(`vars == ${varsTuple}`);
+    lines.push(`vars == <<${allVars.join(", ")}>>`);
     lines.push("");
+
+    if (needDomain) {
+        lines.push("Domain == 0..1  \\* bounded value domain for event payload bindings");
+        lines.push("");
+    }
 
     if (analysis.topStates.size > 0) {
         lines.push(`States == ${formatStateSet(analysis.topStates)}`);
@@ -313,7 +383,6 @@ export const generateTla = (
         initParts.push(`/\\ phase = "UNDEFINED"  \\* no [*] --> Initial found`);
     }
     for (const v of stateVars) initParts.push(`/\\ ${v} = 0`);
-    // region 変数は基本 _inactive、ただし initialState が composite なら入口で起動
     const initialCompositeId = initialState !== null && analysis.composites.has(initialState)
         ? initialState
         : null;
@@ -337,10 +406,9 @@ export const generateTla = (
     // Actions
     const actionNames: string[] = [];
     for (const { t, context } of analysis.transitions) {
-        if (isPseudoState(t.from)) continue; // initial transitions handled by Init
+        if (isPseudoState(t.from)) continue;
 
         if (context.kind === "region") {
-            // region 内部の遷移 (Inner --> Inner or Inner --> [*])
             const base = sanitize(
                 `${context.compositeId}_r${context.regionIdx}_${t.from}_${t.label.event ?? "tau"}_${
                     isPseudoState(t.to) ? "done" : t.to
@@ -354,8 +422,7 @@ export const generateTla = (
             continue;
         }
 
-        // context は top
-        if (isPseudoState(t.to)) continue; // top → [*] は Stutter で処理
+        if (isPseudoState(t.to)) continue;
 
         const fromIsComposite = analysis.composites.has(t.from);
         const toIsComposite = analysis.composites.has(t.to);
@@ -370,20 +437,14 @@ export const generateTla = (
         } else if (!fromIsComposite && toIsComposite) {
             lines.push(formatEnterCompositeAction(t, t.to, ctx, analysis.regionEntries));
         } else if (fromIsComposite && toIsComposite) {
-            // 入れ子 / composite 間: まず source を reset、次に target を init。
-            // 単純実装として exit と enter の合成形を inline。
-            const exitBody = formatExitCompositeAction(t, t.from, ctx);
-            // exit body にはすでに phase' = t.to が入っているので、target が composite なら
-            // 追加で region init が必要。手抜き実装として exit のみ採用 (composite→composite は
-            // hitl に出ないので Phase B v1 ではこの制限を受け入れる)。
-            lines.push(exitBody);
+            // 簡略: composite → composite は exit のみ扱う (Phase B 範囲外)
+            lines.push(formatExitCompositeAction(t, t.from, ctx));
         } else {
             lines.push(formatTopAction(t, ctx));
         }
         lines.push("");
     }
 
-    // Stutter
     if (terminal.size > 0) {
         lines.push(`Stutter ==`);
         lines.push(`    /\\ phase \\in TerminalStates`);

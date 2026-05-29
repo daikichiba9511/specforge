@@ -7,8 +7,9 @@ const tlaOf = (
     src: string,
     guards?: Map<string, string>,
     stateVars?: string[],
+    eventPayloads?: Map<string, string[]>,
     moduleName?: string,
-): string => generateTla(expectOk(parse(src)), guards, stateVars, moduleName);
+): string => generateTla(expectOk(parse(src)), guards, stateVars, eventPayloads, moduleName);
 
 Deno.test("emits MODULE header + EXTENDS + footer", () => {
     const out = tlaOf(`stateDiagram-v2
@@ -23,6 +24,7 @@ Deno.test("custom module name overrides default", () => {
     const out = tlaOf(
         `stateDiagram-v2
 [*] --> A`,
+        undefined,
         undefined,
         undefined,
         "Hitl",
@@ -218,4 +220,78 @@ state Outer {
     // Start → Outer は composite 入る遷移 → outer_r0 を入口に init
     assertStringIncludes(out, "Start_begin_Outer ==");
     assertStringIncludes(out, `outer_r0' = "Inner"`);
+});
+
+Deno.test("Phase 2: event payload matching state var → \\E binding + var' update", () => {
+    const out = tlaOf(
+        `stateDiagram-v2
+A --> B : ev [ok]`,
+        new Map([["ok", "catalog_size > 0"]]),
+        ["catalog_size"],
+        new Map([["ev", ["batch_id", "catalog_size"]]]),
+    );
+    // Domain が emit される
+    assertStringIncludes(out, "Domain == 0..1");
+    // \E new_catalog_size \in Domain: で wrap
+    assertStringIncludes(out, "\\E new_catalog_size \\in Domain:");
+    // guard 内の catalog_size が new_catalog_size にリネーム
+    assertStringIncludes(out, "new_catalog_size > 0");
+    // primed update
+    assertStringIncludes(out, "catalog_size' = new_catalog_size");
+    // catalog_size は bound なので UNCHANGED から除外される
+    const actionBlock = out.substring(out.indexOf("A_ev_B =="));
+    assertEquals(actionBlock.includes("UNCHANGED <<catalog_size"), false);
+});
+
+Deno.test("Phase 2: payload field NOT matching any state var → no binding", () => {
+    const out = tlaOf(
+        `stateDiagram-v2
+A --> B : ev`,
+        undefined,
+        ["count"],
+        new Map([["ev", ["unrelated_field"]]]),
+    );
+    assertEquals(out.includes("\\E new_"), false);
+    // count は UNCHANGED に入る
+    assertStringIncludes(out, "UNCHANGED <<count");
+});
+
+Deno.test("Phase 2: empty eventPayloads → no Domain emitted, UNCHANGED everywhere", () => {
+    const out = tlaOf(
+        `stateDiagram-v2
+A --> B : ev`,
+        undefined,
+        ["count"],
+    );
+    assertEquals(out.includes("Domain =="), false);
+    assertEquals(out.includes("\\E new_"), false);
+});
+
+Deno.test("Phase 2: bound update works in region action too", () => {
+    const out = tlaOf(
+        `stateDiagram-v2
+[*] --> Outer
+state Outer {
+    [*] --> A
+    A --> B : ev [ok]
+}`,
+        new Map([["ok", "count > 0"]]),
+        ["count"],
+        new Map([["ev", ["count"]]]),
+    );
+    // region 内の遷移でも payload binding が効く
+    assertStringIncludes(out, "Outer_r0_A_ev_B ==");
+    assertStringIncludes(out, "\\E new_count \\in Domain:");
+    assertStringIncludes(out, "count' = new_count");
+});
+
+Deno.test("Phase 2: CSPm-style operators in guard are translated to TLA+ flavor", () => {
+    const out = tlaOf(
+        `stateDiagram-v2
+A --> B : ev [g]`,
+        new Map([["g", "count == 0 && other != 1"]]),
+        ["count", "other"],
+    );
+    // == → =, != → /=, && → /\
+    assertStringIncludes(out, "count = 0 /\\ other /= 1");
 });
