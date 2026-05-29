@@ -103,9 +103,8 @@ prefix imports — Bun is fine for local dev iteration.
   sub-parsing (event/guard/action chain), comments
 - CSPm generator (`src/cspm.ts`) — flat states, hierarchical composite (inline), orthogonal regions
   (`|||`), completion transitions (`;`), triggered external transitions (`/\\`), action chain
-  (`a, b` → `a -> b`), guard dictionary substitution, state variable declarations (`<var> = 0`
-  を冒頭に emit), **event/action channel 宣言**, **payload event を `?` 受信パターンに変換**
-  (Phase 3)
+  (`a, b` → `a -> b`), guard dictionary substitution, event/action channel 宣言, payload event を
+  `?` 受信パターンに変換 (Phase 3), **プロセスパラメータ threading + Spec entry point** (Phase 4)
 - `.md` 入力対応 (`src/spec_doc.ts`) — Mermaid block 抽出 + `### ガード定義` 表をガード辞書化 +
   `### 共有状態` 表から変数名抽出 + `### イベント契約` 表から event payload 抽出
 - CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、CSPm を stdout 出力
@@ -116,20 +115,18 @@ prefix imports — Bun is fine for local dev iteration.
 
 **Pending (next-session priorities, roughly in order)**:
 
-1. **Process parameter threading (Phase 4)**: Phase 3 で event payload を channel 経由で bind
-   できるようになったが、bind した値は同一遷移内で使えるだけで次プロセスに渡らない。Phase 4 として
-   `Sampling(catalog_size) = ...` の形でプロセスパラメータを定義し、遷移で
-   `... ->
-   ParallelSetup(catalog_size)` のように thread する。アクションが変数を書き換える
-   semantics (例: `increment_count`) を定義するなら AST 拡張が必要。
-2. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
-   reject unparseable guards, ガード辞書に無いタグを warning など).
-3. **FDR4 invocation**: subprocess wrapper for `fdr4 batch-process`, parse output for verification
-   results. Could be a separate command (`specforge verify spec.mmd`).
-4. **JSON output mode** for piping into other tools.
-5. **Self-dogfood milestone**: once items 1-2 land, run `specforge docs/behavior.md` and feed the
-   output to FDR4. Verify deadlock-freeness and termination on specforge's own pipeline spec. This
-   is the first end-to-end demonstration that the spec-behavior → specforge → FDR4 chain works.
+1. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
+   reject unparseable guards, ガード辞書に無いタグを warning, payload field 名と state var 名の
+   不整合 etc.)。
+2. **FDR4 invocation**: `specforge verify spec.md` のような専用コマンドで `fdr4 batch-process` を
+   subprocess 実行 + 結果パース。Phase 4 まで終わって生成 CSPm が valid な構造になったので
+   ここから実機で動かす段階。
+3. **JSON output mode** for piping into other tools.
+4. **Self-dogfood milestone**: `specforge docs/behavior.md` + fdr4 で specforge 自身のパイプライン
+   spec の deadlock-freeness と termination を検証する。Phase 4 で技術的に可能になった。
+5. **Action update semantics (Phase 5)**: 現在 action は opaque な channel として扱われ、 state var
+   を更新できない。`update_count` のような action で param を書き換える semantics を 入れるなら、AST
+   拡張 (action にメタ情報) + spec-behavior 側の規律拡張が必要。
 6. **TLA+ backend** (eventual): same AST, different generator. Stub `src/tla.ts`.
 
 ## How to develop
@@ -207,12 +204,11 @@ This scaffold is the output of a session where:
 Before writing more code, **read `docs/spec.md`** to know what the parser/cspm must honor. The spec
 doc is the canonical contract; CLAUDE.md (this file) is the project context wrapper around it.
 
-次は Pending #1 (Phase 3 = State variable threading) もしくは小規模タスク (Validation pass / FDR4
-invocation / JSON output) から選ぶ。Phase 3 は AST + codegen の大規模改造になるので、Plan を
-立ててから進めるのが推奨。当面の妥当な順序:
+Phase 1〜4 完了で生成 CSPm が構造的に valid な形になった。次の推奨順序:
 
-1. **FDR4 invocation を先**: 生成した CSPm を実機 fdr4 で流して、本当に検証が走るか確かめる。
-   未定義シンボル / 文法エラーがあれば早く露見する (= Phase 3 設計の参考になる)。
-2. **Validation pass**: ガード辞書に無いタグや未宣言の変数を warning で報告。具体的な fix 候補も
-   出すと UX 向上。
-3. **Phase 3**: 上 2 つで実環境エラーの傾向が見えてから設計するのが効率的。
+1. **FDR4 invocation**: 生成した CSPm を実機 fdr4 で流して deadlock-free check を走らせる。 syntax
+   error / 未定義シンボル等が出れば Validation pass の警告対象を具体化できる。
+2. **Validation pass**: ガード辞書漏れ、未宣言変数、payload field と state var の不整合等を parse
+   後に warning 報告。
+3. **Self-dogfood**: `docs/behavior.md` の状態機械を specforge で変換 → fdr4 で検証。 spec-behavior
+   → specforge → FDR4 チェーンが end-to-end で動くことの実証。

@@ -235,18 +235,27 @@ specforge は `### 共有(状態|変数)` / `### State variable(s)` / `### Share
 | `prelabeled_count` | int (>=0) | Prelabeling step | Prelabeling 遷移時のガード | 0      |
 ```
 
-specforge が出す CSPm 冒頭の例:
+specforge が出す CSPm の例:
 
 ```cspm
--- specforge: state variables (default: 0; edit to verify scenarios)
-catalog_size = 0
-prelabeled_count = 0
+-- specforge: entry point with default initial values (edit to verify scenarios)
+Spec = enter_sampling -> Sampling(0, 0)
+-- assert Spec :[deadlock free]
 
-Sampling = sampling_done & catalog_size > 0 -> ...
+Sampling(catalog_size, prelabeled_count) =
+  sampling_done?batch_id.catalog_size -> (catalog_size > 0)
+    & emit_sampling_done -> ParallelSetup(catalog_size, prelabeled_count)
+  [] ...
 ```
 
-シナリオごとに違う値で検証したい場合は、生成された CSPm の `= 0` 部分を手で書き換えるか、別途
-verification harness で `let catalog_size = N within ...` で覆って使う。
+Phase 4 で **プロセスパラメータ threading** に切り替わった: 全プロセスが state var 列を引数として
+受け取り、target invocation で同じ引数を伝播する。event payload field の名前が state var 名と
+一致すると、CSPm の `?` 受信が自動でスコープシャドウィングを起こし、続く invocation には 新値が
+thread される (上の例だと `sampling_done?_.catalog_size` で受け取った値がそのまま
+`ParallelSetup(catalog_size, ...)` に渡る)。
+
+シナリオごとに違う初期値で検証したい場合は、生成された `Spec = Initial(0, 0, ...)` の数値を
+書き換えるか、`|~| c : VAL @ Sampling(c, 0, ...)` 形式の非決定的選択で全初期値を網羅する。
 
 ### 5.3 ガード定義表 (specforge が取り込む)
 

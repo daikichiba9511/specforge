@@ -57,8 +57,6 @@ const bareIdent = (s: string): string => {
     return m ? m[1] : s;
 };
 
-// diagram 全体からチャネル化が必要な名前を収集する。
-// event 名 + action 名 (bare 部分) を集める。null event は省略 (CSPm では prefix 不要)。
 const collectChannels = (
     diagram: Diagram,
     eventPayloads: Map<string, string[]>,
@@ -95,8 +93,6 @@ const collectChannels = (
 
 const NAMETYPE_BOUND = "nametype VAL = {0..1}";
 
-// 冒頭に emit する channel 宣言ブロック。空なら "" を返す。
-// 型付き event は nametype VAL を共用 (検証用に値域を小さく保つ)。
 const formatChannelDecls = (channels: Channels): string => {
     if (channels.typed.length === 0 && channels.untyped.length === 0) return "";
     const lines = ["-- specforge: event / action channels"];
@@ -109,12 +105,11 @@ const formatChannelDecls = (channels: Channels): string => {
     return lines.join("\n") + "\n\n";
 };
 
-// 共有変数を CSPm 冒頭の定数定義 (初期値 0) として出力する。空配列なら "" を返す。
-const formatStateVars = (stateVars: string[]): string => {
-    if (stateVars.length === 0) return "";
-    const header = "-- specforge: state variables (default: 0; edit to verify scenarios)";
-    const decls = stateVars.map((v) => `${v} = 0`).join("\n");
-    return `${header}\n${decls}\n\n`;
+// プロセス名を `Name(v1, v2, ...)` の invocation 形にする。
+// stateVars が空、または name が `SKIP` の場合は素の name を返す。
+const invokeProcess = (name: string, stateVars: string[]): string => {
+    if (name === "SKIP" || stateVars.length === 0) return name;
+    return `${name}(${stateVars.join(", ")})`;
 };
 
 // ガードタグを辞書で式に置換。辞書に無いタグは verbatim を返す。
@@ -124,28 +119,26 @@ const resolveGuard = (raw: string, guards: Map<string, string>): string => guard
 const formatActionsToTarget = (actions: string[], to: string): string =>
     actions.length > 0 ? `${actions.join(" -> ")} -> ${to}` : to;
 
-// イベント prefix を返す。payload があれば `event?f1.f2`、無ければ event 名そのまま。
-const formatEventPrefix = (event: string, eventPayloads: Map<string, string[]>): string => {
-    const payload = eventPayloads.get(event);
-    if (!payload || payload.length === 0) return event;
-    return `${event}?${payload.join(".")}`;
-};
-
-// 1 つの遷移を `[indent](guard) & event_prefix -> action_chain -> target` の形に整える。
+// 1 つの遷移を CSPm の 1 ブランチに整える。
 //
-// CSPm 上のセマンティクス選択:
-// - 通常イベント (payload 無し) + guard: `(guard) & event -> ...` (pre-event guard、標準形)
-// - payload event + guard: `event?p.q -> (guard) & ...` (binding が guard より前に来る必要)
-// - event 無し (内部遷移 / 完了): event prefix を省略 (`tau` は出さない)
+// セマンティクス:
+// - 通常イベント (payload 無し) + guard: `(guard) & event -> ...` (pre-event guard)
+// - payload event + guard: `event?p.q -> (guard) & ...` (binding が guard より前)
+// - event 無し: prefix を省略 (`tau` は出さない)
+// - 遷移先プロセスは {@link invokeProcess} で `Next(v1, v2, ...)` 形に。
+//   payload field 名が state var 名と一致する場合は `?` で bind されてシャドウィングが起こり、
+//   そのまま `Next(...)` に渡すと自動的に新値が thread される。
 const formatBranch = (
     t: Transition,
     guards: Map<string, string>,
     eventPayloads: Map<string, string[]>,
+    stateVars: string[],
     indent: string,
 ): string => {
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
+    const toInvocation = invokeProcess(to, stateVars);
     const guardWrapped = t.label.guard ? `(${resolveGuard(t.label.guard, guards)}) & ` : "";
-    const targetChain = formatActionsToTarget(t.label.actions, to);
+    const targetChain = formatActionsToTarget(t.label.actions, toInvocation);
     const event = t.label.event;
 
     if (event === null) {
@@ -154,7 +147,7 @@ const formatBranch = (
 
     const payload = eventPayloads.get(event);
     if (payload && payload.length > 0) {
-        const prefix = formatEventPrefix(event, eventPayloads);
+        const prefix = `${event}?${payload.join(".")}`;
         return `${indent}${prefix} -> ${guardWrapped}${targetChain}`;
     }
 
@@ -166,11 +159,14 @@ const formatLeafProcess = (
     transitions: Transition[],
     guards: Map<string, string>,
     eventPayloads: Map<string, string[]>,
-): string =>
-    `${from} =\n${
-        transitions.map((t) => formatBranch(t, guards, eventPayloads, "  "))
-            .join("\n  []\n")
-    }`;
+    stateVars: string[],
+): string => {
+    const lhs = invokeProcess(from, stateVars);
+    const branches = transitions
+        .map((t) => formatBranch(t, guards, eventPayloads, stateVars, "  "))
+        .join("\n  []\n");
+    return `${lhs} =\n${branches}`;
+};
 
 // `[*] --> X` inside a region marks X as the region entry. ill-formed input
 // (no entry transition) falls back to SKIP so codegen doesn't crash.
@@ -183,21 +179,27 @@ const regionEntry = (region: Region): string => {
 
 // Completion transition from a composite (event == null). The body SKIPs first,
 // then this branch runs in sequence after `;`.
-const formatCompletionBranch = (t: Transition, guards: Map<string, string>): string => {
+const formatCompletionBranch = (
+    t: Transition,
+    guards: Map<string, string>,
+    stateVars: string[],
+): string => {
     const guard = t.label.guard ? `(${resolveGuard(t.label.guard, guards)}) & ` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
-    return `${guard}${formatActionsToTarget(t.label.actions, to)}`;
+    const toInvocation = invokeProcess(to, stateVars);
+    return `${guard}${formatActionsToTarget(t.label.actions, toInvocation)}`;
 };
 
 // Render a composite state as a CSPm process:
-//   Composite = body [; completion-choice] [/\\ triggered-choice]
+//   Composite(v...) = body [; completion-choice] [/\\ triggered-choice]
 const formatComposite = (
     c: Composite,
     outer: Transition[],
     guards: Map<string, string>,
     eventPayloads: Map<string, string[]>,
+    stateVars: string[],
 ): string => {
-    const entries = c.regions.map(regionEntry);
+    const entries = c.regions.map((region) => invokeProcess(regionEntry(region), stateVars));
     const orthogonal = entries.length > 1;
     const body = orthogonal ? entries.join(" ||| ") : (entries[0] ?? "SKIP");
 
@@ -208,7 +210,7 @@ const formatComposite = (
 
     if (completion.length > 0) {
         const completionStr = completion
-            .map((t) => formatCompletionBranch(t, guards))
+            .map((t) => formatCompletionBranch(t, guards, stateVars))
             .join(" [] ");
         const bodyExpr = orthogonal ? `(${body})` : body;
         core = `${bodyExpr} ; ${completionStr}`;
@@ -216,13 +218,43 @@ const formatComposite = (
 
     if (triggered.length > 0) {
         const triggeredStr = triggered
-            .map((t) => formatBranch(t, guards, eventPayloads, ""))
+            .map((t) => formatBranch(t, guards, eventPayloads, stateVars, ""))
             .join(" [] ");
         const coreExpr = completion.length > 0 || orthogonal ? `(${core})` : core;
         core = `${coreExpr} /\\ (${triggeredStr})`;
     }
 
-    return `${c.id} = ${core}`;
+    return `${invokeProcess(c.id, stateVars)} = ${core}`;
+};
+
+// トップレベル `[*] --> Initial` 遷移を 1 つ拾う (見つからなければ null)。
+// region 内の `[*] -->` (= composite 内 entry) は対象外。
+const findInitialTransition = (diagram: Diagram): Transition | null => {
+    for (const region of diagram.regions) {
+        for (const stmt of region.stmts) {
+            if (stmt.kind === "transition" && isPseudoState(stmt.from)) return stmt;
+        }
+    }
+    return null;
+};
+
+// `Spec = Initial(0, 0, ...)` の entry point を組み立てる。
+// state var が無い、もしくは `[*] -->` が見つからない場合は何も出さない。
+// 初期遷移の event は drop (外部トリガと見なす)、action chain は保持。
+const formatEntryPoint = (diagram: Diagram, stateVars: string[]): string => {
+    if (stateVars.length === 0) return "";
+    const init = findInitialTransition(diagram);
+    if (!init) return "";
+    const initialValues = stateVars.map(() => "0").join(", ");
+    const target = isPseudoState(init.to) ? "SKIP" : `${init.to}(${initialValues})`;
+    const chain = formatActionsToTarget(init.label.actions, target);
+    return [
+        "-- specforge: entry point with default initial values (edit to verify scenarios)",
+        `Spec = ${chain}`,
+        "-- assert Spec :[deadlock free]",
+        "",
+        "",
+    ].join("\n");
 };
 
 /**
@@ -232,26 +264,24 @@ const formatComposite = (
  * 1. channel 宣言ブロック: diagram 中の event / action を全て CSP channel として宣言。
  *    `eventPayloads` に登録された event は `channel ev : VAL.VAL` 形式で型付き、それ以外は
  *    `channel ev` で untyped。
- * 2. 状態変数ブロック: `stateVars` で指定された変数の `<name> = 0` 定数定義 (空配列なら省略)。
+ * 2. entry point ブロック (state var あり時のみ): `Spec = Initial(0, 0, ...)` と
+ *    assert 用テンプレート。初期遷移 `[*] --> Initial` から target を取り、event は drop、
+ *    action chain は保持する。
  * 3. プロセス定義群:
- *    - 各 leaf state: `State = (guard) & event -> action -> Next [] ...`
- *      (`event?p.q -> ...` 形式は payload event のみ。guard binding 順序の都合で post-event)
- *    - 各 composite state: `Composite = (R1 ||| R2) [; 完了] [/\\ triggered]`
+ *    - state var が宣言されていると、全プロセスが `P(v1, v2, ...) = ...` の形で
+ *      パラメータ化される。target invocation も `Next(v1, v2, ...)` に展開
+ *    - 各 leaf state: `State(v...) = ev -> action -> Next(v...) [] ...`
+ *    - 各 composite state: `Composite(v...) = (R1(v...) ||| R2(v...)) [; 完了] [/\\ triggered]`
  *
- * 詳細セマンティクス:
- * - `guards` 辞書: guard タグを CSPm 式に置換 (例: `catalog_ok` → `catalog_size > 0`)
- * - `stateVars`: 参照変数の初期値 (グローバル定数)
- * - `eventPayloads`: event → payload field 列。payload event は受信パターン `?f1.f2` に変換
- *   され、続く guard / action から bound 名を参照可能
- *
- * 現状の制約 (`docs/spec.md` §7、`CLAUDE.md` "Pending" 参照):
- * - 状態変数のプロセス間 thread は未対応 (event payload で受け取った値は次状態に渡らない)
- * - 引数付き action (`write(item_id)` 等) は verbatim 出力、channel decl は bare 名のみ
+ * Phase 4 (process parameter threading) のセマンティクス:
+ * - event payload field の名前が state var 名と一致する場合、`?` 受信で CSPm のスコープ
+ *   シャドウィングが起こり、続く target invocation で新値が自動的に thread される
+ * - 一致しない field は branch 内ローカルにのみ bind され、param には伝播しない
  *
  * @param diagram       - パース済みの AST
  * @param guards        - ガードタグ → CSPm 式 の辞書 (省略時は置換無し)
- * @param stateVars     - 共有変数名のリスト (省略時は宣言を emit しない)
- * @param eventPayloads - event → payload field 名のリスト (省略時は全 event untyped)
+ * @param stateVars     - state var 名のリスト (空なら process はパラメータ化されない)
+ * @param eventPayloads - event → payload field 名のリスト
  * @returns 各セクションを `\n\n` 区切りで連結した CSPm 文字列
  */
 export const generateCspm = (
@@ -267,19 +297,19 @@ export const generateCspm = (
 
     for (const [id, composite] of composites) {
         const outer = byFrom.get(id) ?? [];
-        processes.push(formatComposite(composite, outer, guards, eventPayloads));
+        processes.push(formatComposite(composite, outer, guards, eventPayloads, stateVars));
     }
 
     for (const [from, ts] of byFrom) {
         if (isPseudoState(from)) continue;
         if (composites.has(from)) continue;
-        processes.push(formatLeafProcess(from, ts, guards, eventPayloads));
+        processes.push(formatLeafProcess(from, ts, guards, eventPayloads, stateVars));
     }
 
     const channels = collectChannels(diagram, eventPayloads);
     return (
         formatChannelDecls(channels) +
-        formatStateVars(stateVars) +
+        formatEntryPoint(diagram, stateVars) +
         processes.join("\n\n")
     );
 };

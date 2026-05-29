@@ -175,24 +175,51 @@ Outer --> Fault : abort [bad] / alert`,
     assertStringIncludes(out, "Outer = Inner /\\ ((err_count > 0) & abort -> alert -> Fault)");
 });
 
-Deno.test("emits state variable declarations at top of output", () => {
+Deno.test("Phase 4: parameterizes processes with state vars", () => {
     const out = cspmOf(
         `stateDiagram-v2
 A --> B : ev / act`,
         undefined,
         ["catalog_size", "prelabeled_count"],
     );
-    assertStringIncludes(out, "catalog_size = 0\nprelabeled_count = 0\n");
-    // state var block must appear before any process definition.
-    const varIdx = out.indexOf("catalog_size = 0");
-    const procIdx = out.indexOf("A =");
-    assertEquals(varIdx >= 0 && varIdx < procIdx, true);
+    // Process LHS gets params; target invocation gets the same params.
+    assertStringIncludes(out, "A(catalog_size, prelabeled_count) =");
+    assertStringIncludes(out, "B(catalog_size, prelabeled_count)");
 });
 
-Deno.test("omits state variable section when list is empty", () => {
+Deno.test("Phase 4: skips param threading when stateVars is empty", () => {
     const out = cspmOf(`stateDiagram-v2
 A --> B : ev / act`);
-    assertEquals(out.includes("state variables"), false);
+    // No state vars → no params, falls back to plain process names.
+    assertStringIncludes(out, "A =");
+    assertEquals(out.includes("A("), false);
+});
+
+Deno.test("Phase 4: emits Spec entry point with initial 0 values", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+[*] --> A : / setup
+A --> [*]`,
+        undefined,
+        ["x", "y"],
+    );
+    assertStringIncludes(out, "Spec = setup -> A(0, 0)");
+    assertStringIncludes(out, "-- assert Spec :[deadlock free]");
+});
+
+Deno.test("Phase 4: payload field matching state var name shadows the param (auto-update)", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+A --> B : ev [ok] / act`,
+        new Map([["ok", "catalog_size > 0"]]),
+        ["catalog_size"],
+        new Map([["ev", ["batch_id", "catalog_size"]]]),
+    );
+    // `?batch_id.catalog_size` で受信 → 続く B(catalog_size) に bound 値が thread される。
+    assertStringIncludes(
+        out,
+        "ev?batch_id.catalog_size -> (catalog_size > 0) & act -> B(catalog_size)",
+    );
 });
 
 Deno.test("emits typed channel declaration for events with payload", () => {
