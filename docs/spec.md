@@ -211,8 +211,10 @@ CSPm 出力では payload を持つ event は `channel ev : VAL.VAL` の型付�
 内の変数参照が **channel 受信で bind された値** を見るようになり、event ごとに異なる値で
 ガード判定が行われる (Phase 3 の主目的)。
 
-VAL の bound は `{0..1}` で生成される (検証時の状態空間を最小に保つため)。広い範囲で検証したい
-場合は生成された CSPm の `nametype VAL = {0..1}` を `{0..N}` に書き換える。
+VAL の bound はデフォルト `{0..1}` で生成される (検証時の状態空間を最小に保つため)。広い範囲で
+検証したい場合は CLI flag `--bound=N` で `{0..N}` に上書き可能 (TLA+ の `Domain == 0..N` も同時に
+切り替わる)。例: hitl spec で `--bound=5` を指定すると、 TLC が探索する distinct states は 27 → 3943
+まで増える。
 
 ### 5.2 状態変数の列挙 (specforge が取り込む)
 

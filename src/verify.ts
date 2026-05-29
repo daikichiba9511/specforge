@@ -148,10 +148,12 @@ const summarizeTlcOutput = (stdout: string): string => {
  *
  * @param specPath - 入力 spec (`.mmd` / `.md` どちらも可)
  * @param deps - 副作用注入 (省略時はデフォルト実装)
+ * @param bound - generateTla の bound (Domain == 0..N) パラメータ。省略時 1
  */
 export const verify = (
     specPath: string,
     deps: VerifyDeps = defaultVerifyDeps,
+    bound: number = 1,
 ): VerifyResult => {
     let raw: string;
     try {
@@ -192,6 +194,7 @@ export const verify = (
         doc.stateVars,
         doc.eventPayloads,
         MODULE_NAME,
+        bound,
     );
 
     let tempDir: string;

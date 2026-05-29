@@ -325,6 +325,8 @@ const hasAnyPayloadBinding = (analysis: Analysis, ctx: EmitContext): boolean => 
  * @param stateVars     - state var 名のリスト
  * @param eventPayloads - event → payload field 名のリスト (省略時は binding 無し)
  * @param moduleName    - MODULE 名 (省略時 "Spec")
+ * @param bound         - `Domain == 0..bound` の N。大きいほど state var が取りうる値が増えて
+ *                        TLC が探索する状態空間も増える。省略時 1 (最小: {0, 1})
  */
 export const generateTla = (
     diagram: Diagram,
@@ -332,6 +334,7 @@ export const generateTla = (
     stateVars: string[] = [],
     eventPayloads: Map<string, string[]> = new Map(),
     moduleName: string = "Spec",
+    bound: number = 1,
 ): string => {
     const analysis = analyze(diagram);
     const initialState = findInitialState(diagram);
@@ -363,7 +366,9 @@ export const generateTla = (
     lines.push("");
 
     if (needDomain) {
-        lines.push("Domain == 0..1  \\* bounded value domain for event payload bindings");
+        lines.push(
+            `Domain == 0..${bound}  \\* bounded value domain for event payload bindings`,
+        );
         lines.push("");
     }
 

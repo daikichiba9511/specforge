@@ -91,12 +91,10 @@ const collectChannels = (
     return { typed, untyped };
 };
 
-const NAMETYPE_BOUND = "nametype VAL = {0..1}";
-
-const formatChannelDecls = (channels: Channels): string => {
+const formatChannelDecls = (channels: Channels, bound: number): string => {
     if (channels.typed.length === 0 && channels.untyped.length === 0) return "";
     const lines = ["-- specforge: event / action channels"];
-    if (channels.typed.length > 0) lines.push(NAMETYPE_BOUND);
+    if (channels.typed.length > 0) lines.push(`nametype VAL = {0..${bound}}`);
     for (const u of channels.untyped) lines.push(`channel ${u}`);
     for (const t of channels.typed) {
         const type = t.fields.map(() => "VAL").join(".");
@@ -282,6 +280,8 @@ const formatEntryPoint = (diagram: Diagram, stateVars: string[]): string => {
  * @param guards        - ガードタグ → CSPm 式 の辞書 (省略時は置換無し)
  * @param stateVars     - state var 名のリスト (空なら process はパラメータ化されない)
  * @param eventPayloads - event → payload field 名のリスト
+ * @param bound         - `nametype VAL = {0..bound}` の N。typed channel の payload 値域を制御
+ *                        (デフォルト 1 = `{0, 1}`)。FDR4 の状態空間に直接影響する
  * @returns 各セクションを `\n\n` 区切りで連結した CSPm 文字列
  */
 export const generateCspm = (
@@ -289,6 +289,7 @@ export const generateCspm = (
     guards: Map<string, string> = new Map(),
     stateVars: string[] = [],
     eventPayloads: Map<string, string[]> = new Map(),
+    bound: number = 1,
 ): string => {
     const { transitions, composites } = collectAll(diagram.regions);
     const byFrom = groupByFrom(transitions);
@@ -308,7 +309,7 @@ export const generateCspm = (
 
     const channels = collectChannels(diagram, eventPayloads);
     return (
-        formatChannelDecls(channels) +
+        formatChannelDecls(channels, bound) +
         formatEntryPoint(diagram, stateVars) +
         processes.join("\n\n")
     );

@@ -222,6 +222,19 @@ A --> B : ev [ok] / act`,
     );
 });
 
+Deno.test("bound param overrides default nametype VAL = {0..1}", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+A --> B : ev`));
+    const out = generateCspm(
+        diagram,
+        new Map(),
+        [],
+        new Map([["ev", ["count"]]]),
+        7,
+    );
+    assertStringIncludes(out, "nametype VAL = {0..7}");
+});
+
 Deno.test("emits typed channel declaration for events with payload", () => {
     const out = cspmOf(
         `stateDiagram-v2

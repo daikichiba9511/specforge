@@ -122,3 +122,70 @@ Deno.test("main: clean spec → no warnings attached", () => {
     if (r.kind !== "success") return;
     assertEquals(r.warnings, []);
 });
+
+Deno.test("main: --bound=N propagates to TLA+ Domain", () => {
+    // payload binding が無いと Domain が emit されない → bound 効果を検証するため
+    // event payload と state var が一致する spec を用意する
+    const SPEC = `# title
+
+\`\`\`mermaid
+stateDiagram-v2
+A --> B : ev [ok]
+\`\`\`
+
+### ガード定義
+
+| Guard | Cond |
+| --- | --- |
+| \`ok\` | \`x > 0\` |
+
+### 共有状態
+
+| Variable |
+| --- |
+| \`x\` |
+
+### イベント契約
+
+| Event | Payload |
+| --- | --- |
+| \`ev\` | \`{x}\` |
+`;
+    const r = main(["--tla", "--bound=4", "spec.md"], { readFile: () => SPEC });
+    assertEquals(r.kind, "success");
+    if (r.kind !== "success") return;
+    assertEquals(r.stdout.includes("Domain == 0..4"), true);
+});
+
+Deno.test("main: --bound=N propagates to CSPm nametype VAL", () => {
+    // payload event を持つ spec で typed channel を emit させる
+    const SPEC = `# title
+
+\`\`\`mermaid
+stateDiagram-v2
+A --> B : ev
+\`\`\`
+
+### イベント契約
+
+| Event | Payload |
+| --- | --- |
+| \`ev\` | \`{n}\` |
+`;
+    const r = main(["--bound=3", "spec.md"], { readFile: () => SPEC });
+    assertEquals(r.kind, "success");
+    if (r.kind !== "success") return;
+    assertEquals(r.stdout.includes("nametype VAL = {0..3}"), true);
+});
+
+Deno.test("main: --bound=abc returns failure with informative message", () => {
+    const r = main(["--bound=abc", "spec.mmd"], { readFile: () => VALID_SPEC });
+    assertEquals(r.kind, "failure");
+    if (r.kind !== "failure") return;
+    assertEquals(r.stderr.includes("--bound"), true);
+});
+
+Deno.test("main: --bound=-1 (negative) is rejected", () => {
+    const r = main(["--bound=-1", "spec.mmd"], { readFile: () => VALID_SPEC });
+    assertEquals(r.kind, "failure");
+});

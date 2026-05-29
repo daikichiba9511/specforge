@@ -61,6 +61,8 @@ const docAndDiagramToJson = (
  * - `--tla`: CSPm の代わりに TLA+ を出力
  * - `--json`: AST + metadata を JSON で出力 (CSPm/TLA+ 出力に代えて)
  * - `--strict`: validation で warning が 1 件でもあれば failure (exit 1) として返す
+ * - `--bound=N`: TLA+ の `Domain == 0..N` / CSPm の `nametype VAL = {0..N}` を上書き
+ *   (デフォルト 1)。state var が取りうる値域を広げると TLC の探索空間が増える
  *
  * @param args - CLI 引数 (通常は `argv.slice(2)`)
  * @param deps - 副作用注入。デフォルトは `fs.readFileSync` を使う実装
@@ -80,13 +82,17 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
     const useTla = args.includes("--tla");
     const useJson = args.includes("--json");
     const strict = args.includes("--strict");
+    const bound = parseBoundArg(args);
+    if (bound instanceof Error) {
+        return { kind: "failure", exitCode: 1, stderr: bound.message };
+    }
     const positional = args.filter((a) => !a.startsWith("--"));
     if (positional.length === 0) {
         return {
             kind: "failure",
             exitCode: 1,
-            stderr: "usage: specforge [--tla|--json] [--strict] <spec.mmd|spec.md>\n" +
-                "       specforge verify [--strict] <spec.mmd|spec.md>",
+            stderr: "usage: specforge [--tla|--json] [--strict] [--bound=N] <spec.mmd|spec.md>\n" +
+                "       specforge verify [--strict] [--bound=N] <spec.mmd|spec.md>",
         };
     }
 
@@ -119,22 +125,51 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
     if (useJson) {
         stdout = docAndDiagramToJson(doc, result.value);
     } else if (useTla) {
-        stdout = generateTla(result.value, doc.guards, doc.stateVars, doc.eventPayloads);
+        stdout = generateTla(
+            result.value,
+            doc.guards,
+            doc.stateVars,
+            doc.eventPayloads,
+            "Spec",
+            bound,
+        );
     } else {
-        stdout = generateCspm(result.value, doc.guards, doc.stateVars, doc.eventPayloads);
+        stdout = generateCspm(
+            result.value,
+            doc.guards,
+            doc.stateVars,
+            doc.eventPayloads,
+            bound,
+        );
     }
     return { kind: "success", stdout, warnings };
+};
+
+// `--bound=N` を args から拾って整数に変換。 値が壊れていたら Error を返す (caller が failure 化)。
+const parseBoundArg = (args: string[]): number | Error => {
+    const arg = args.find((a) => a.startsWith("--bound="));
+    if (!arg) return 1;
+    const raw = arg.slice("--bound=".length);
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) {
+        return new Error(`--bound expects a non-negative integer, got '${raw}'`);
+    }
+    return n;
 };
 
 // `verify` サブコマンドの実装。verify モジュールへの委譲 + 結果を MainResult に整形。
 const runVerify = (verifyArgs: string[], deps: Deps): MainResult => {
     const strict = verifyArgs.includes("--strict");
+    const bound = parseBoundArg(verifyArgs);
+    if (bound instanceof Error) {
+        return { kind: "failure", exitCode: 1, stderr: bound.message };
+    }
     const positional = verifyArgs.filter((a) => !a.startsWith("--"));
     if (positional.length === 0) {
         return {
             kind: "failure",
             exitCode: 1,
-            stderr: "usage: specforge verify [--strict] <spec.mmd|spec.md>",
+            stderr: "usage: specforge verify [--strict] [--bound=N] <spec.mmd|spec.md>",
         };
     }
 
@@ -145,7 +180,7 @@ const runVerify = (verifyArgs: string[], deps: Deps): MainResult => {
         raw = deps.readFile(positional[0]);
     } catch {
         // 読めない場合は verify() 側のエラーハンドリングに任せる
-        return finalizeVerify(positional[0], strict, []);
+        return finalizeVerify(positional[0], strict, bound, []);
     }
     const doc = preprocess(raw);
     const parsed = parse(doc.mermaid);
@@ -160,11 +195,16 @@ const runVerify = (verifyArgs: string[], deps: Deps): MainResult => {
         };
     }
 
-    return finalizeVerify(positional[0], strict, warnings);
+    return finalizeVerify(positional[0], strict, bound, warnings);
 };
 
-const finalizeVerify = (specPath: string, _strict: boolean, warnings: string[]): MainResult => {
-    const result = verify(specPath);
+const finalizeVerify = (
+    specPath: string,
+    _strict: boolean,
+    bound: number,
+    warnings: string[],
+): MainResult => {
+    const result = verify(specPath, undefined, bound);
     switch (result.kind) {
         case "verified":
             return { kind: "success", stdout: `verified ok\n\n${result.stdout}`, warnings };

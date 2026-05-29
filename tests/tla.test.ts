@@ -295,3 +295,17 @@ A --> B : ev [g]`,
     // == → =, != → /=, && → /\
     assertStringIncludes(out, "count = 0 /\\ other /= 1");
 });
+
+Deno.test("bound param overrides default Domain = 0..1", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+A --> B : ev`));
+    const out = generateTla(
+        diagram,
+        new Map(),
+        ["count"],
+        new Map([["ev", ["count"]]]),
+        "Spec",
+        5,
+    );
+    assertStringIncludes(out, "Domain == 0..5");
+});
