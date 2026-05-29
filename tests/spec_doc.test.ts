@@ -1,5 +1,11 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { extractGuards, extractMermaid, extractStateVars, preprocess } from "../src/spec_doc.ts";
+import {
+    extractEventPayloads,
+    extractGuards,
+    extractMermaid,
+    extractStateVars,
+    preprocess,
+} from "../src/spec_doc.ts";
 
 Deno.test("extractMermaid: returns null when no fenced block", () => {
     assertEquals(extractMermaid("just text\nno fences"), null);
@@ -148,6 +154,65 @@ Deno.test("extractStateVars: works without backticks", () => {
     assertEquals(extractStateVars(md), ["count", "ready"]);
 });
 
+Deno.test("extractEventPayloads: returns empty map when no event heading", () => {
+    assertEquals(extractEventPayloads("# Title\n").size, 0);
+});
+
+Deno.test("extractEventPayloads: accepts 'イベント一覧' heading too", () => {
+    const md = `### イベント一覧
+
+| event | payload |
+| --- | --- |
+| \`tick\` | \`{n}\` |
+`;
+    assertEquals(extractEventPayloads(md).get("tick"), ["n"]);
+});
+
+Deno.test("extractEventPayloads: parses Japanese heading + payload column", () => {
+    const md = `### イベント契約表
+
+| event | producer | payload | 備考 |
+| --- | --- | --- | --- |
+| \`sampling_done\` | Sampling step | \`{batch_id, catalog_size}\` (説明...) | foo |
+| \`monthly_cron\` | Scheduler | — | trigger |
+| \`prelabel_done\` | Prelabeling | \`{batch_id, count, failed}\` | bar |
+`;
+    const payloads = extractEventPayloads(md);
+    assertEquals(payloads.get("sampling_done"), ["batch_id", "catalog_size"]);
+    assertEquals(payloads.get("monthly_cron"), []);
+    assertEquals(payloads.get("prelabel_done"), ["batch_id", "count", "failed"]);
+});
+
+Deno.test("extractEventPayloads: parses English heading", () => {
+    const md = `## Event contracts
+
+| Event | Payload |
+| --- | --- |
+| \`tick\` | \`{n}\` |
+`;
+    assertEquals(extractEventPayloads(md).get("tick"), ["n"]);
+});
+
+Deno.test("extractEventPayloads: returns empty array when payload column has no braces", () => {
+    const md = `### Event contract
+
+| Event | Payload |
+| --- | --- |
+| \`tick\` | no payload |
+`;
+    assertEquals(extractEventPayloads(md).get("tick"), []);
+});
+
+Deno.test("extractEventPayloads: returns empty when heading present but no payload column", () => {
+    const md = `### イベント契約
+
+| Event | Note |
+| --- | --- |
+| \`tick\` | no payload column |
+`;
+    assertEquals(extractEventPayloads(md).size, 0);
+});
+
 Deno.test("preprocess: returns mermaid + guards + stateVars for full .md", () => {
     const md = `# Spec
 
@@ -198,4 +263,5 @@ Deno.test("preprocess: falls back to raw input when no mermaid fence", () => {
     assertEquals(result.mermaid, raw);
     assertEquals(result.guards.size, 0);
     assertEquals(result.stateVars, []);
+    assertEquals(result.eventPayloads.size, 0);
 });

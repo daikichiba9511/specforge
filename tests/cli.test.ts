@@ -69,10 +69,12 @@ Deno.test("main: .md input extracts mermaid block and applies guard substitution
     assertEquals(r.stdout.includes("(x > 0) & ev -> act -> B"), true);
 });
 
-Deno.test("main: .md input emits state variable declarations at top", () => {
+Deno.test("main: .md input emits channel declarations + state variable declarations", () => {
     const r = main(["spec.md"], { readFile: () => MARKDOWN_SPEC });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
-    assertEquals(r.stdout.startsWith("-- specforge: state variables"), true);
+    // channels come first, then state vars, then processes.
+    assertEquals(r.stdout.startsWith("-- specforge: event / action channels"), true);
+    assertEquals(r.stdout.includes("-- specforge: state variables"), true);
     assertEquals(r.stdout.includes("x = 0\n"), true);
 });

@@ -65,7 +65,7 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
     }
     return {
         kind: "success",
-        stdout: generateCspm(result.value, doc.guards, doc.stateVars),
+        stdout: generateCspm(result.value, doc.guards, doc.stateVars, doc.eventPayloads),
     };
 };
 

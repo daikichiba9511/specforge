@@ -7,17 +7,16 @@ const cspmOf = (
     src: string,
     guards?: Map<string, string>,
     stateVars?: string[],
-): string => generateCspm(expectOk(parse(src)), guards, stateVars);
+    eventPayloads?: Map<string, string[]>,
+): string => generateCspm(expectOk(parse(src)), guards, stateVars, eventPayloads);
 
-Deno.test("flat process emission (baseline)", () => {
+Deno.test("flat process emission (baseline, no event = no prefix, no tau)", () => {
     const out = cspmOf(`stateDiagram-v2
 [*] --> A
 A --> B : ev / act
 B --> [*]`);
-    assertEquals(
-        out,
-        "A =\n  ev -> act -> B\n\nB =\n  tau -> SKIP",
-    );
+    assertStringIncludes(out, "A =\n  ev -> act -> B");
+    assertStringIncludes(out, "B =\n  SKIP");
 });
 
 Deno.test("hierarchical composite (single region) inlines region entry", () => {
@@ -27,7 +26,7 @@ state Outer {
     Inner --> [*]
 }`);
     assertStringIncludes(out, "Outer = Inner");
-    assertStringIncludes(out, "Inner =\n  tau -> SKIP");
+    assertStringIncludes(out, "Inner =\n  SKIP");
 });
 
 Deno.test("orthogonal composite emits ||| between region entries", () => {
@@ -193,8 +192,46 @@ A --> B : ev / act`,
 Deno.test("omits state variable section when list is empty", () => {
     const out = cspmOf(`stateDiagram-v2
 A --> B : ev / act`);
-    assertEquals(out.startsWith("--"), false);
-    assertEquals(out.startsWith("A ="), true);
+    assertEquals(out.includes("state variables"), false);
+});
+
+Deno.test("emits typed channel declaration for events with payload", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+A --> B : sampling_done / act`,
+        undefined,
+        undefined,
+        new Map([["sampling_done", ["batch_id", "catalog_size"]]]),
+    );
+    assertStringIncludes(out, "nametype VAL = {0..1}");
+    assertStringIncludes(out, "channel sampling_done : VAL.VAL");
+});
+
+Deno.test("emits untyped channel for events / actions without payload", () => {
+    const out = cspmOf(`stateDiagram-v2
+A --> B : tick / log`);
+    assertStringIncludes(out, "channel tick");
+    assertStringIncludes(out, "channel log");
+});
+
+Deno.test("payload event uses ?-binding before guard (post-event guard)", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+A --> B : ev [ok] / act`,
+        new Map([["ok", "catalog_size > 0"]]),
+        undefined,
+        new Map([["ev", ["batch_id", "catalog_size"]]]),
+    );
+    assertStringIncludes(out, "ev?batch_id.catalog_size -> (catalog_size > 0) & act -> B");
+});
+
+Deno.test("non-payload event keeps pre-event guard form", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+A --> B : ev [ok] / act`,
+        new Map([["ok", "x > 0"]]),
+    );
+    assertStringIncludes(out, "(x > 0) & ev -> act -> B");
 });
 
 Deno.test("composite ID is not also emitted as a flat process", () => {

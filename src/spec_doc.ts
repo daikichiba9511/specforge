@@ -17,11 +17,16 @@
  * - `guards`: ガードタグ → CSP/CSPm 式 の辞書 (空でも可)
  * - `stateVars`: 共有状態テーブルで宣言された変数名リスト (順序保持、重複除去)。
  *   cspm 生成時に冒頭の `<var> = 0` 定義として emit される。
+ * - `eventPayloads`: イベント契約表で宣言された各 event のペイロードフィールド一覧。
+ *   `sampling_done -> ["batch_id", "catalog_size"]` のような対応。cspm 生成時に
+ *   channel 型 (`channel sampling_done : Nat.Nat`) と受信パターン (`?batch_id.catalog_size`)
+ *   に展開される。
  */
 export type SpecDoc = {
     mermaid: string;
     guards: Map<string, string>;
     stateVars: string[];
+    eventPayloads: Map<string, string[]>;
 };
 
 const RE_MERMAID_OPEN = /^```mermaid\b/;
@@ -34,6 +39,12 @@ const RE_GUARD_HEADING = /^#{1,6}\s+.*(?:ガード|Guards?\b)/i;
 // 共有状態 / state variable(s) / shared state を含む見出し。
 const RE_STATE_VAR_HEADING =
     /^#{1,6}\s+.*(?:共有(?:状態|変数)|State\s*Variables?\b|Shared\s*State\b)/i;
+// イベント契約 / 一覧 / 定義 / Event contract(s) / list(s) / definition(s) を含む見出し。
+// 「イベント」「Event」だけだと誤マッチ多いので、続く語で具体性を絞る。
+const RE_EVENT_HEADING =
+    /^#{1,6}\s+.*(?:イベント(?:契約|一覧|定義)|Event\s*(?:Contracts?|Lists?|Definitions?)\b)/i;
+// payload セル中の `{a, b, c}` 部分を抽出 (周囲のコメント等は無視)。
+const RE_PAYLOAD_BRACES = /\{([^}]*)\}/;
 
 const stripBackticks = (s: string): string => {
     const t = s.trim();
@@ -145,17 +156,74 @@ export const extractStateVars = (input: string): string[] => {
 };
 
 /**
+ * `### イベント契約` (もしくは `Event contracts?` を含む見出し) の直後の markdown 表から
+ * 各 event の payload フィールド一覧を抽出する。
+ *
+ * 受理形式:
+ * - 見出し行: 任意レベル `#` + 本文に "イベント契約" / "Event contract(s)"
+ * - 表のヘッダ行に "payload" または "ペイロード" を含むセルがあること (payload 列の特定に使う)
+ * - 各データ行 1 列目 = event 名 (backtick 任意)、payload 列 = `{f1, f2, ...}` 形式
+ * - payload セルに `{...}` が無い (or "なし" / "—" 等) → 空配列
+ * - `{...}` 周辺の補足コメントは無視 (`` `{batch_id, catalog_size}` (説明...) `` のような表記を許容)
+ */
+export const extractEventPayloads = (input: string): Map<string, string[]> => {
+    const result = new Map<string, string[]>();
+    const lines = input.split("\n");
+
+    let i = 0;
+    while (i < lines.length && !RE_EVENT_HEADING.test(lines[i])) i++;
+    if (i >= lines.length) return result;
+
+    i++;
+    while (i < lines.length && !RE_TABLE_ROW.test(lines[i])) i++;
+    if (i >= lines.length) return result;
+
+    const headerCells = parseTableRow(lines[i]);
+    const payloadIdx = headerCells.findIndex((c) => /payload|ペイロード/i.test(c));
+    if (payloadIdx < 0) return result;
+    i++;
+
+    if (i < lines.length && RE_TABLE_SEPARATOR.test(lines[i])) i++;
+
+    while (i < lines.length && RE_TABLE_ROW.test(lines[i])) {
+        const cells = parseTableRow(lines[i]);
+        if (cells.length > payloadIdx) {
+            const name = stripBackticks(cells[0]);
+            const payload = parsePayloadCell(cells[payloadIdx]);
+            if (name) result.set(name, payload);
+        }
+        i++;
+    }
+    return result;
+};
+
+const parsePayloadCell = (cell: string): string[] => {
+    const m = RE_PAYLOAD_BRACES.exec(cell);
+    if (!m) return [];
+    return m[1]
+        .split(",")
+        .map((f) => stripBackticks(f.trim()))
+        .filter((f) => f.length > 0);
+};
+
+/**
  * `.md` / `.mmd` どちらの入力でも適切に前処理した {@link SpecDoc} を返す。
  * Mermaid block が見つからない場合は入力そのものを Mermaid として扱う (= 生 `.mmd`)。
  */
 export const preprocess = (input: string): SpecDoc => {
     const extracted = extractMermaid(input);
     if (extracted === null) {
-        return { mermaid: input, guards: new Map(), stateVars: [] };
+        return {
+            mermaid: input,
+            guards: new Map(),
+            stateVars: [],
+            eventPayloads: new Map(),
+        };
     }
     return {
         mermaid: extracted,
         guards: extractGuards(input),
         stateVars: extractStateVars(input),
+        eventPayloads: extractEventPayloads(input),
     };
 };

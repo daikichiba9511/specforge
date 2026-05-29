@@ -103,10 +103,11 @@ prefix imports — Bun is fine for local dev iteration.
   sub-parsing (event/guard/action chain), comments
 - CSPm generator (`src/cspm.ts`) — flat states, hierarchical composite (inline), orthogonal regions
   (`|||`), completion transitions (`;`), triggered external transitions (`/\\`), action chain
-  (`a, b` → `a -> b`), guard dictionary substitution, **state variable declarations** (`<var> = 0`
-  を冒頭に emit)
+  (`a, b` → `a -> b`), guard dictionary substitution, state variable declarations (`<var> = 0`
+  を冒頭に emit), **event/action channel 宣言**, **payload event を `?` 受信パターンに変換**
+  (Phase 3)
 - `.md` 入力対応 (`src/spec_doc.ts`) — Mermaid block 抽出 + `### ガード定義` 表をガード辞書化 +
-  `### 共有状態` 表から変数名抽出
+  `### 共有状態` 表から変数名抽出 + `### イベント契約` 表から event payload 抽出
 - CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、CSPm を stdout 出力
 - Parser tests + cspm tests + spec_doc tests + cli tests
 - Example spec (`examples/traffic-light.mmd`)
@@ -115,10 +116,12 @@ prefix imports — Bun is fine for local dev iteration.
 
 **Pending (next-session priorities, roughly in order)**:
 
-1. **State variable threading (Phase 3)**: Phase 2 で `<var> = 0` 冒頭定数化までは完了。 Phase 3
-   として `Sampling(catalog_size) = ...` 型のプロセスパラメータ化と遷移時の thread
-   (アクションが変数を更新する semantics、状態変化を引数経由で次プロセスに渡す)。AST と codegen
-   の大規模改造が必要 (見積もり ~400 LOC)。
+1. **Process parameter threading (Phase 4)**: Phase 3 で event payload を channel 経由で bind
+   できるようになったが、bind した値は同一遷移内で使えるだけで次プロセスに渡らない。Phase 4 として
+   `Sampling(catalog_size) = ...` の形でプロセスパラメータを定義し、遷移で
+   `... ->
+   ParallelSetup(catalog_size)` のように thread する。アクションが変数を書き換える
+   semantics (例: `increment_count`) を定義するなら AST 拡張が必要。
 2. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
    reject unparseable guards, ガード辞書に無いタグを warning など).
 3. **FDR4 invocation**: subprocess wrapper for `fdr4 batch-process`, parse output for verification

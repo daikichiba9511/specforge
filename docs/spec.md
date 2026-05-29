@@ -199,8 +199,20 @@ Mermaid 図だけでは形式変換に必要な情報が足りない。spec フ�
 | `annotation_complete` | 運用者 (手動) | spec 全体                                     | async / 手動キック             | `{batch_id}`               | ガード未使用                  |
 ```
 
-specforge は表を**外部ファイル参照**または spec ファイル内の特定 heading (`### イベント契約表`)
-として取り込む。詳細パス指定は CLI フラグ予定 (§7)。
+specforge は `.md` 入力時、`### イベント契約` / `### イベント一覧` / `### イベント定義` (もしくは
+英語版 `Event contract(s)` / `Event list(s)` / `Event definition(s)`) を含む見出しの直後の表を
+拾う。表のヘッダ行で「payload」(もしくは「ペイロード」) を含むセルがある列を payload 列として
+特定し、各データ行の 1 列目を event 名、payload セルの `{f1, f2, ...}` 部分を payload field 列
+として取り込む。`{}` の周囲にある補足コメント (例:
+`` `{batch_id, catalog_size}` (`catalog_size` を `catalog_ok` で使用) ``) は無視される。
+
+CSPm 出力では payload を持つ event は `channel ev : VAL.VAL` の型付き channel として宣言され、
+遷移箇所では `ev?f1.f2 -> (guard) & action -> Next` の受信パターンに展開される。これにより guard
+内の変数参照が **channel 受信で bind された値** を見るようになり、event ごとに異なる値で
+ガード判定が行われる (Phase 3 の主目的)。
+
+VAL の bound は `{0..1}` で生成される (検証時の状態空間を最小に保つため)。広い範囲で検証したい
+場合は生成された CSPm の `nametype VAL = {0..1}` を `{0..N}` に書き換える。
 
 ### 5.2 状態変数の列挙 (specforge が取り込む)
 
