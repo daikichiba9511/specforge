@@ -25,10 +25,12 @@ deno task test
 deno task cli examples/traffic-light.mmd
 ```
 
-## Spec
+## Docs
 
-The canonical input contract (accepted Mermaid subset, transition label form, side artifacts, CSPm
-mapping) is in [`docs/spec.md`](./docs/spec.md).
+- [`docs/spec.md`](./docs/spec.md) — input language contract (accepted Mermaid subset, BNF,
+  transition label form, side artifacts, CSPm mapping)
+- [`docs/behavior.md`](./docs/behavior.md) — specforge's own runtime pipeline behavior, written as a
+  `spec-behavior`-style state machine (dogfood target for self-verification)
 
 ## Develop
 

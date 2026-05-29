@@ -33,6 +33,15 @@ almost CSP-translatable:
 specforge is the **mechanical translator** that turns those well-formed specs into CSPm, so the
 formal property check side becomes a button-press.
 
+## Canonical docs (read these before touching code)
+
+- **[`docs/spec.md`](./docs/spec.md)** — input language contract: accepted Mermaid subset, BNF,
+  transition label format, side artifacts, CSPm mapping semantics
+- **[`docs/behavior.md`](./docs/behavior.md)** — specforge's own runtime pipeline behavior, written
+  as a `spec-behavior`-style state machine. Doubles as the **dogfood target**: feed this through
+  specforge itself once MVP is ready, run FDR4 on the output to verify deadlock-freeness and
+  termination
+
 ## The input language: `spec-behavior` subset
 
 specforge accepts a **subset of Mermaid stateDiagram-v2** matching what the `spec-behavior` skill
@@ -116,7 +125,10 @@ prefix imports — Bun is fine for local dev iteration.
 5. **FDR4 invocation**: subprocess wrapper for `fdr4 batch-process`, parse output for verification
    results. Could be a separate command (`specforge verify spec.mmd`).
 6. **JSON output mode** for piping into other tools.
-7. **TLA+ backend** (eventual): same AST, different generator. Stub `src/tla.ts`.
+7. **Self-dogfood milestone**: once items 1-3 land, run `specforge docs/behavior.md` and feed the
+   output to FDR4. Verify deadlock-freeness and termination on specforge's own pipeline spec. This
+   is the first end-to-end demonstration that the spec-behavior → specforge → FDR4 chain works.
+8. **TLA+ backend** (eventual): same AST, different generator. Stub `src/tla.ts`.
 
 ## How to develop
 
