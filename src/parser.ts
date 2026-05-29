@@ -1,6 +1,11 @@
 import type { Diagram, Label, Region, Stmt } from "./types.ts";
 import { err, ok, type Result } from "./result.ts";
 
+/**
+ * パース失敗を表すエラー型。
+ * `line` は 1-indexed の入力行番号。例外として throw されることはなく、
+ * `Result<_, ParseError>` の `error` 側に乗せて返される。
+ */
 export type ParseError = {
     kind: "ParseError";
     message: string;
@@ -150,6 +155,21 @@ const parseRegions = (state: ParserState, depth: number): Step<Region[]> => {
     return ok({ state: cur, value: regions });
 };
 
+/**
+ * Mermaid stateDiagram-v2 入力を specforge の AST にパースする。
+ *
+ * 受理サブセットの定義は `docs/spec.md` §3 を参照。サブセット外の構文は
+ * {@link ParseError} として失敗を返す (例外は投げない)。
+ *
+ * @param input - 入力スペック文字列。`\n` 区切り、`%%` 以降の行内コメント可
+ * @returns 成功時は {@link Diagram}、失敗時は行番号付き {@link ParseError}
+ *
+ * @example
+ * ```ts
+ * const r = parse("stateDiagram-v2\n[*] --> A");
+ * if (r.ok) console.log(r.value.regions[0].stmts.length); // 1
+ * ```
+ */
 export const parse = (input: string): Result<Diagram, ParseError> => {
     const initial: ParserState = {
         lines: input.split("\n").map(stripComment),
@@ -166,4 +186,8 @@ export const parse = (input: string): Result<Diagram, ParseError> => {
     return ok({ type: "stateDiagram-v2", regions: regions.value.value });
 };
 
+/**
+ * {@link ParseError} を `L<line>: <message>` 形式の 1 行に整形する。
+ * CLI / log 出力の表示用ヘルパ。
+ */
 export const formatParseError = (e: ParseError): string => `L${e.line}: ${e.message}`;

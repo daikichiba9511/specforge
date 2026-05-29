@@ -41,11 +41,18 @@ const formatBranch = (t: Transition): string => {
 const formatProcess = (from: string, transitions: Transition[]): string =>
     `${from} =\n${transitions.map(formatBranch).join("\n  []\n")}`;
 
-// Sketch CSPm generator. Current limitations (see CLAUDE.md "Pending"):
-// - composite + orthogonal regions are flattened (no `|||` composition emitted)
-// - composite exit cancellation (interrupt operator `/\`) not handled
-// - state variables not threaded as process parameters
-// - guards rendered verbatim — may not parse in FDR4 if expression contains unsupported operators
+/**
+ * {@link Diagram} から CSPm (FDR4 入力) 文字列を生成する。
+ *
+ * 現状 sketch 実装で以下は未対応 (`docs/spec.md` §7、`CLAUDE.md` "Pending" 参照):
+ * - composite + 直交領域 (`|||` 合成)
+ * - composite 退出時の interrupt (`/\`)
+ * - 状態変数のプロセスパラメータ化
+ * - guard 式は verbatim 出力 (FDR4 で構文エラーになる可能性あり)
+ *
+ * @param diagram - パース済みの AST
+ * @returns プロセス定義群を `\n\n` 区切りで連結した CSPm 文字列
+ */
 export const generateCspm = (diagram: Diagram): string =>
     Array.from(groupByFrom(collectTransitions(diagram.regions)).entries())
         .filter(([from]) => !isPseudoState(from))
