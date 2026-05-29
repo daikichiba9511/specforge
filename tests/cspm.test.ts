@@ -3,8 +3,11 @@ import { parse } from "../src/parser.ts";
 import { generateCspm } from "../src/cspm.ts";
 import { expectOk } from "./_helpers.ts";
 
-const cspmOf = (src: string, guards?: Map<string, string>): string =>
-    generateCspm(expectOk(parse(src)), guards);
+const cspmOf = (
+    src: string,
+    guards?: Map<string, string>,
+    stateVars?: string[],
+): string => generateCspm(expectOk(parse(src)), guards, stateVars);
 
 Deno.test("flat process emission (baseline)", () => {
     const out = cspmOf(`stateDiagram-v2
@@ -171,6 +174,27 @@ Outer --> Fault : abort [bad] / alert`,
         new Map([["bad", "err_count > 0"]]),
     );
     assertStringIncludes(out, "Outer = Inner /\\ (abort & err_count > 0 -> alert -> Fault)");
+});
+
+Deno.test("emits state variable declarations at top of output", () => {
+    const out = cspmOf(
+        `stateDiagram-v2
+A --> B : ev / act`,
+        undefined,
+        ["catalog_size", "prelabeled_count"],
+    );
+    assertStringIncludes(out, "catalog_size = 0\nprelabeled_count = 0\n");
+    // state var block must appear before any process definition.
+    const varIdx = out.indexOf("catalog_size = 0");
+    const procIdx = out.indexOf("A =");
+    assertEquals(varIdx >= 0 && varIdx < procIdx, true);
+});
+
+Deno.test("omits state variable section when list is empty", () => {
+    const out = cspmOf(`stateDiagram-v2
+A --> B : ev / act`);
+    assertEquals(out.startsWith("--"), false);
+    assertEquals(out.startsWith("A ="), true);
 });
 
 Deno.test("composite ID is not also emitted as a flat process", () => {

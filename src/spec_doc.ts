@@ -11,12 +11,17 @@
  */
 
 /**
- * `.md` 前処理の結果。`mermaid` は AST パーサに渡す Mermaid 文字列、
- * `guards` は ガードタグ → CSP/CSPm 式 の辞書 (空でも可)。
+ * `.md` 前処理の結果。
+ *
+ * - `mermaid`: AST パーサに渡す Mermaid 文字列
+ * - `guards`: ガードタグ → CSP/CSPm 式 の辞書 (空でも可)
+ * - `stateVars`: 共有状態テーブルで宣言された変数名リスト (順序保持、重複除去)。
+ *   cspm 生成時に冒頭の `<var> = 0` 定義として emit される。
  */
 export type SpecDoc = {
     mermaid: string;
     guards: Map<string, string>;
+    stateVars: string[];
 };
 
 const RE_MERMAID_OPEN = /^```mermaid\b/;
@@ -26,6 +31,9 @@ const RE_TABLE_SEPARATOR = /^\s*\|[\s|:-]+\|\s*$/;
 // 見出し (`#` 1〜6 個) の本文に "ガード" または "Guard(s)" を含むもの。
 // `\b` は ASCII にしか効かないため Japanese 側は境界条件を付けない。
 const RE_GUARD_HEADING = /^#{1,6}\s+.*(?:ガード|Guards?\b)/i;
+// 共有状態 / state variable(s) / shared state を含む見出し。
+const RE_STATE_VAR_HEADING =
+    /^#{1,6}\s+.*(?:共有(?:状態|変数)|State\s*Variables?\b|Shared\s*State\b)/i;
 
 const stripBackticks = (s: string): string => {
     const t = s.trim();
@@ -98,11 +106,56 @@ export const extractGuards = (input: string): Map<string, string> => {
 };
 
 /**
+ * `### 共有状態` (もしくは `State variable(s)` 等を含む見出し) の直後の markdown 表から
+ * 1 列目を変数名として取り出す。
+ *
+ * 受理形式:
+ * - 見出し行: 任意レベル `#` + 本文に "共有(状態|変数)" / "State variable(s)" / "Shared state"
+ * - 表の 1 列目 = 変数名 (backtick 任意)
+ * - 重複は除去、出現順を保持
+ */
+export const extractStateVars = (input: string): string[] => {
+    const vars: string[] = [];
+    const seen = new Set<string>();
+    const lines = input.split("\n");
+
+    let i = 0;
+    while (i < lines.length && !RE_STATE_VAR_HEADING.test(lines[i])) i++;
+    if (i >= lines.length) return vars;
+
+    i++;
+    while (i < lines.length && !RE_TABLE_ROW.test(lines[i])) i++;
+    if (i >= lines.length) return vars;
+
+    i++; // header row
+    if (i < lines.length && RE_TABLE_SEPARATOR.test(lines[i])) i++;
+
+    while (i < lines.length && RE_TABLE_ROW.test(lines[i])) {
+        const cells = parseTableRow(lines[i]);
+        if (cells.length >= 1) {
+            const name = stripBackticks(cells[0]);
+            if (name && !seen.has(name)) {
+                seen.add(name);
+                vars.push(name);
+            }
+        }
+        i++;
+    }
+    return vars;
+};
+
+/**
  * `.md` / `.mmd` どちらの入力でも適切に前処理した {@link SpecDoc} を返す。
  * Mermaid block が見つからない場合は入力そのものを Mermaid として扱う (= 生 `.mmd`)。
  */
 export const preprocess = (input: string): SpecDoc => {
     const extracted = extractMermaid(input);
-    if (extracted === null) return { mermaid: input, guards: new Map() };
-    return { mermaid: extracted, guards: extractGuards(input) };
+    if (extracted === null) {
+        return { mermaid: input, guards: new Map(), stateVars: [] };
+    }
+    return {
+        mermaid: extracted,
+        guards: extractGuards(input),
+        stateVars: extractStateVars(input),
+    };
 };

@@ -54,6 +54,12 @@ A --> B : ev [ok] / act
 | Guard | Cond |
 | --- | --- |
 | \`ok\` | \`x > 0\` |
+
+### 共有状態
+
+| Variable |
+| --- |
+| \`x\` |
 `;
 
 Deno.test("main: .md input extracts mermaid block and applies guard substitution", () => {
@@ -61,4 +67,12 @@ Deno.test("main: .md input extracts mermaid block and applies guard substitution
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
     assertEquals(r.stdout.includes("ev & x > 0 -> act -> B"), true);
+});
+
+Deno.test("main: .md input emits state variable declarations at top", () => {
+    const r = main(["spec.md"], { readFile: () => MARKDOWN_SPEC });
+    assertEquals(r.kind, "success");
+    if (r.kind !== "success") return;
+    assertEquals(r.stdout.startsWith("-- specforge: state variables"), true);
+    assertEquals(r.stdout.includes("x = 0\n"), true);
 });

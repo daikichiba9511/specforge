@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { extractGuards, extractMermaid, preprocess } from "../src/spec_doc.ts";
+import { extractGuards, extractMermaid, extractStateVars, preprocess } from "../src/spec_doc.ts";
 
 Deno.test("extractMermaid: returns null when no fenced block", () => {
     assertEquals(extractMermaid("just text\nno fences"), null);
@@ -93,6 +93,86 @@ other text not table
     assertEquals(guards.has("spurious"), false);
 });
 
+Deno.test("extractStateVars: returns empty when no matching heading", () => {
+    assertEquals(extractStateVars("# Title\nsome content"), []);
+});
+
+Deno.test("extractStateVars: parses Japanese heading + first column as var name", () => {
+    const md = `### 共有状態と排他制御
+
+| 共有変数 | 読み手 | 書き手 | 競合可能性 |
+|---------|--------|--------|----------|
+| \`catalog_size\` | Sampling 遷移時のガード | Sampling step | なし |
+| \`prelabeled_count\` | Prelabeling 遷移時のガード | Prelabeling step | なし |
+| \`filtered_pair_count\` | Filtering 遷移時のガード | Filtering step | なし |
+`;
+    assertEquals(extractStateVars(md), [
+        "catalog_size",
+        "prelabeled_count",
+        "filtered_pair_count",
+    ]);
+});
+
+Deno.test("extractStateVars: parses English heading", () => {
+    const md = `## State variables
+
+| Variable | Type | Writer |
+|---|---|---|
+| \`count\` | int | StepA |
+| \`flag\` | bool | StepB |
+`;
+    assertEquals(extractStateVars(md), ["count", "flag"]);
+});
+
+Deno.test("extractStateVars: skips dup names, preserves order", () => {
+    const md = `### State variables
+
+| Var |
+| --- |
+| \`a\` |
+| \`b\` |
+| \`a\` |
+| \`c\` |
+`;
+    assertEquals(extractStateVars(md), ["a", "b", "c"]);
+});
+
+Deno.test("extractStateVars: works without backticks", () => {
+    const md = `### 共有状態
+
+| 変数 | 型 |
+| --- | --- |
+| count | int |
+| ready | bool |
+`;
+    assertEquals(extractStateVars(md), ["count", "ready"]);
+});
+
+Deno.test("preprocess: returns mermaid + guards + stateVars for full .md", () => {
+    const md = `# Spec
+
+\`\`\`mermaid
+stateDiagram-v2
+A --> B : ev [ok] / act
+\`\`\`
+
+### ガード定義
+
+| Guard | Cond |
+| --- | --- |
+| \`ok\` | \`count > 0\` |
+
+### 共有状態
+
+| Variable |
+| --- |
+| \`count\` |
+`;
+    const result = preprocess(md);
+    assertEquals(result.guards.get("ok"), "count > 0");
+    assertEquals(result.stateVars, ["count"]);
+});
+
 Deno.test("preprocess: returns mermaid + guards for full .md", () => {
     const md = `# Spec
 
@@ -117,4 +197,5 @@ Deno.test("preprocess: falls back to raw input when no mermaid fence", () => {
     const result = preprocess(raw);
     assertEquals(result.mermaid, raw);
     assertEquals(result.guards.size, 0);
+    assertEquals(result.stateVars, []);
 });

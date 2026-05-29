@@ -202,19 +202,39 @@ Mermaid 図だけでは形式変換に必要な情報が足りない。spec フ�
 specforge は表を**外部ファイル参照**または spec ファイル内の特定 heading (`### イベント契約表`)
 として取り込む。詳細パス指定は CLI フラグ予定 (§7)。
 
-### 5.2 状態変数の列挙
+### 5.2 状態変数の列挙 (specforge が取り込む)
 
 ガード / アクションで参照される状態変数を、型と所有者 (どの step が書くか) を含めて列挙する。CSP
 プロセスパラメータへのマップに使う。
 
-形式:
+specforge は `### 共有(状態|変数)` / `### State variable(s)` / `### Shared state` を含む見出しの
+直後の markdown 表から **1 列目を変数名**として取り出し、CSPm 冒頭に `<name> = 0` の定数定義を emit
+する。それ以外の列 (型 / 書き手 / 初期値 等) は現状 specforge は読まない (Phase 3 で型情報を
+取り込んでプロセスパラメータ化する予定)。
+
+形式 (推奨):
 
 ```markdown
+### 共有状態と排他制御
+
 | 変数               | 型        | 書き手           | 読み手                     | 初期値 |
 | ------------------ | --------- | ---------------- | -------------------------- | ------ |
 | `catalog_size`     | int (>=0) | Sampling step    | Sampling 遷移時のガード    | 0      |
 | `prelabeled_count` | int (>=0) | Prelabeling step | Prelabeling 遷移時のガード | 0      |
 ```
+
+specforge が出す CSPm 冒頭の例:
+
+```cspm
+-- specforge: state variables (default: 0; edit to verify scenarios)
+catalog_size = 0
+prelabeled_count = 0
+
+Sampling = sampling_done & catalog_size > 0 -> ...
+```
+
+シナリオごとに違う値で検証したい場合は、生成された CSPm の `= 0` 部分を手で書き換えるか、別途
+verification harness で `let catalog_size = N within ...` で覆って使う。
 
 ### 5.3 ガード定義表 (specforge が取り込む)
 

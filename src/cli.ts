@@ -63,7 +63,10 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
     if (!result.ok) {
         return { kind: "failure", exitCode: 1, stderr: formatParseError(result.error) };
     }
-    return { kind: "success", stdout: generateCspm(result.value, doc.guards) };
+    return {
+        kind: "success",
+        stdout: generateCspm(result.value, doc.guards, doc.stateVars),
+    };
 };
 
 if (import.meta.main) {

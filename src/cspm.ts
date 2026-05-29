@@ -137,10 +137,20 @@ const formatComposite = (
     return `${c.id} = ${core}`;
 };
 
+// 共有変数を CSPm 冒頭の定数定義 (初期値 0) として出力する。空配列なら "" を返す。
+// ユーザは生成された CSPm を編集して値を変えることでシナリオを切り替える。
+const formatStateVars = (stateVars: string[]): string => {
+    if (stateVars.length === 0) return "";
+    const header = "-- specforge: state variables (default: 0; edit to verify scenarios)";
+    const decls = stateVars.map((v) => `${v} = 0`).join("\n");
+    return `${header}\n${decls}\n\n`;
+};
+
 /**
  * {@link Diagram} から CSPm (FDR4 入力) 文字列を生成する。
  *
  * 出力構造:
+ * - 冒頭: `stateVars` で指定された変数の `<name> = 0` 定数定義 (空配列なら省略)
  * - 各 leaf state (transition の `from`): `State = ev -> act -> Next [] ...`
  * - 各 composite state: `Composite = (R1 ||| R2) [; 完了遷移] [/\\ triggered]`
  *   - orthogonal region は `|||` で並列合成
@@ -153,15 +163,18 @@ const formatComposite = (
  * 辞書は `.md` 入力時に {@link "./spec_doc.ts"} の preprocess が抽出する。
  *
  * 現状の制約 (`docs/spec.md` §7、`CLAUDE.md` "Pending" 参照):
- * - 状態変数のプロセスパラメータ化未対応 (guard の参照変数は CSPm では未定義のまま)
+ * - 状態変数はトップレベル定数として宣言されるが、プロセスパラメータとして thread されない
+ *   (= シナリオごとに生成 CSPm の値を手で書き換える必要あり、Phase 3 で対応予定)
  *
- * @param diagram - パース済みの AST
- * @param guards  - ガードタグ → CSPm 式 の辞書 (省略時は置換無し)
+ * @param diagram   - パース済みの AST
+ * @param guards    - ガードタグ → CSPm 式 の辞書 (省略時は置換無し)
+ * @param stateVars - 共有変数名のリスト (省略時は宣言を emit しない)
  * @returns プロセス定義群を `\n\n` 区切りで連結した CSPm 文字列
  */
 export const generateCspm = (
     diagram: Diagram,
     guards: Map<string, string> = new Map(),
+    stateVars: string[] = [],
 ): string => {
     const { transitions, composites } = collectAll(diagram.regions);
     const byFrom = groupByFrom(transitions);
@@ -179,5 +192,5 @@ export const generateCspm = (
         processes.push(formatLeafProcess(from, ts, guards));
     }
 
-    return processes.join("\n\n");
+    return formatStateVars(stateVars) + processes.join("\n\n");
 };

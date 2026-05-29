@@ -103,8 +103,10 @@ prefix imports — Bun is fine for local dev iteration.
   sub-parsing (event/guard/action chain), comments
 - CSPm generator (`src/cspm.ts`) — flat states, hierarchical composite (inline), orthogonal regions
   (`|||`), completion transitions (`;`), triggered external transitions (`/\\`), action chain
-  (`a, b` → `a -> b`), **guard dictionary substitution**
-- `.md` 入力対応 (`src/spec_doc.ts`) — Mermaid block 抽出 + `### ガード定義` 表をガード辞書化
+  (`a, b` → `a -> b`), guard dictionary substitution, **state variable declarations** (`<var> = 0`
+  を冒頭に emit)
+- `.md` 入力対応 (`src/spec_doc.ts`) — Mermaid block 抽出 + `### ガード定義` 表をガード辞書化 +
+  `### 共有状態` 表から変数名抽出
 - CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、CSPm を stdout 出力
 - Parser tests + cspm tests + spec_doc tests + cli tests
 - Example spec (`examples/traffic-light.mmd`)
@@ -113,10 +115,10 @@ prefix imports — Bun is fine for local dev iteration.
 
 **Pending (next-session priorities, roughly in order)**:
 
-1. **State variable declaration / threading (Phase 2+)**: 現状ガード式は文字列として置換されるが、
-   `catalog_size` 等の参照変数は CSPm 環境で未定義。Phase 2 として `### 共有状態` 表から
-   `channel <var> : Int` などを冒頭に emit。Phase 3 として `Sampling(catalog_size) = ...` 型の
-   プロセスパラメータ化と遷移時の thread。
+1. **State variable threading (Phase 3)**: Phase 2 で `<var> = 0` 冒頭定数化までは完了。 Phase 3
+   として `Sampling(catalog_size) = ...` 型のプロセスパラメータ化と遷移時の thread
+   (アクションが変数を更新する semantics、状態変化を引数経由で次プロセスに渡す)。AST と codegen
+   の大規模改造が必要 (見積もり ~400 LOC)。
 2. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
    reject unparseable guards, ガード辞書に無いタグを warning など).
 3. **FDR4 invocation**: subprocess wrapper for `fdr4 batch-process`, parse output for verification
@@ -202,14 +204,12 @@ This scaffold is the output of a session where:
 Before writing more code, **read `docs/spec.md`** to know what the parser/cspm must honor. The spec
 doc is the canonical contract; CLAUDE.md (this file) is the project context wrapper around it.
 
-Then pick item 1 from "Pending" — State variable declaration / threading (Phase 2 以降):
+次は Pending #1 (Phase 3 = State variable threading) もしくは小規模タスク (Validation pass / FDR4
+invocation / JSON output) から選ぶ。Phase 3 は AST + codegen の大規模改造になるので、Plan を
+立ててから進めるのが推奨。当面の妥当な順序:
 
-1. `src/spec_doc.ts` に `### 共有状態` / `### State variables` 表を拾う `extractStateVars` を追加。
-   既存の `extractGuards` と並びの構造 (`name → { type, ... }` のような map) で返す。
-2. cspm generator の冒頭に `channel <var>` (もしくは `nametype Var = Int` 等) を emit する分岐を
-   追加。`docs/spec.md` §5.2 の表が型まで持っているので、それを使う。
-3. hitl `.md` を流して FDR4 で実行 (`fdr4 batch-process spec.csp`) し、未定義識別子エラーが消える
-   ことを確認。FDR4 が無ければ `assert P :[deadlock free]` を含む小さな手書き wrapper を `examples/`
-   に置いてもよい。
-4. Phase 3 (プロセスパラメータ化) は別 PR。先に Phase 2 でどこまで FDR4 が動くか測る。
-5. Commit with `feat(cspm): ...` per conventional commits.
+1. **FDR4 invocation を先**: 生成した CSPm を実機 fdr4 で流して、本当に検証が走るか確かめる。
+   未定義シンボル / 文法エラーがあれば早く露見する (= Phase 3 設計の参考になる)。
+2. **Validation pass**: ガード辞書に無いタグや未宣言の変数を warning で報告。具体的な fix 候補も
+   出すと UX 向上。
+3. **Phase 3**: 上 2 つで実環境エラーの傾向が見えてから設計するのが効率的。
