@@ -36,7 +36,10 @@ formal property check side becomes a button-press.
 ## The input language: `spec-behavior` subset
 
 specforge accepts a **subset of Mermaid stateDiagram-v2** matching what the `spec-behavior` skill
-produces. Currently supported by the parser:
+produces. The canonical contract is documented in [`docs/spec.md`](./docs/spec.md) — read it before
+extending the parser or CSPm generator.
+
+Quick overview of the supported core:
 
 - `stateDiagram-v2` header (required)
 - `state "description" as ID` aliases
@@ -47,10 +50,11 @@ produces. Currently supported by the parser:
 - `%% ...` line comments
 
 **Anything else is rejected at parse time**. This is intentional: the goal is to keep the input
-strictly CSP-translatable, not to be a Mermaid clone.
+strictly CSP-translatable, not to be a Mermaid clone. See `docs/spec.md` §6 for what specforge
+rejects and the recommended alternative encoding for each case.
 
-When the `spec-behavior` skill changes, the parser may need to follow. **Cross-check against
-`~/.claude/skills/spec-behavior/SKILL.md` when adding features.**
+When the `spec-behavior` skill changes, both the parser and `docs/spec.md` may need to follow.
+**Cross-check against `~/.claude/skills/spec-behavior/SKILL.md` when adding features.**
 
 ## Tech stack
 
@@ -182,12 +186,15 @@ This scaffold is the output of a session where:
 
 ## Next session — recommended first step
 
-Pick item 1 from "Pending" (composite + orthogonal regions → `|||`):
+Before writing more code, **read `docs/spec.md`** to know what the parser/cspm must honor. The spec
+doc is the canonical contract; CLAUDE.md (this file) is the project context wrapper around it.
 
-1. Add a test in `tests/cspm.test.ts` for the composite case using the existing `ParallelSetup`
-   example from the `spec-behavior` skill docs.
+Then pick item 1 from "Pending" (composite + orthogonal regions → `|||`):
+
+1. Add a test in `tests/cspm.test.ts` for the composite case using the example in `docs/spec.md`
+   §8.2.
 2. Watch it fail.
 3. Update `src/cspm.ts` to emit `|||` for orthogonal regions and inline-process for hierarchical
-   composites.
+   composites, following `docs/spec.md` §7.5.
 4. Run `deno task cli examples/traffic-light.mmd` and the new composite example to sanity-check.
 5. Commit with `feat(cspm): ...` per conventional commits.

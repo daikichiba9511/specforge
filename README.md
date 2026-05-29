@@ -25,6 +25,11 @@ deno task test
 deno task cli examples/traffic-light.mmd
 ```
 
+## Spec
+
+The canonical input contract (accepted Mermaid subset, transition label form, side artifacts, CSPm
+mapping) is in [`docs/spec.md`](./docs/spec.md).
+
 ## Develop
 
 See [`CLAUDE.md`](./CLAUDE.md) for the development context, roadmap, and which dotfiles-managed
