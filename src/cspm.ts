@@ -1,4 +1,4 @@
-import { PSEUDO_STATE } from "./types.ts";
+import { isPseudoState } from "./types.ts";
 import type { Diagram, Region, Stmt } from "./types.ts";
 
 type Transition = Extract<Stmt, { kind: "transition" }>;
@@ -36,7 +36,7 @@ const groupByFrom = (transitions: Transition[]): Map<string, Transition[]> => {
 const formatBranch = (t: Transition): string => {
     const guard = t.label.guard ? ` & ${t.label.guard}` : "";
     const action = t.label.action ? ` -> ${t.label.action}` : "";
-    const to = t.to === PSEUDO_STATE ? "SKIP" : t.to;
+    const to = isPseudoState(t.to) ? "SKIP" : t.to;
     const event = t.label.event ?? "tau";
     return `  ${event}${guard}${action} -> ${to}`;
 };
@@ -51,6 +51,6 @@ const formatProcess = (from: string, transitions: Transition[]): string =>
 // - guards rendered verbatim — may not parse in FDR4 if expression contains unsupported operators
 export const generateCspm = (diagram: Diagram): string =>
     Array.from(groupByFrom(collectTransitions(diagram.regions)).entries())
-        .filter(([from]) => from !== PSEUDO_STATE)
+        .filter(([from]) => !isPseudoState(from))
         .map(([from, ts]) => formatProcess(from, ts))
         .join("\n\n");
