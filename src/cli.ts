@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { argv, exit } from "node:process";
 import { formatParseError, parse } from "./parser.ts";
 import { generateCspm } from "./cspm.ts";
+import { generateTla } from "./tla.ts";
 import { preprocess } from "./spec_doc.ts";
+import { verify } from "./verify.ts";
 
 /**
  * CLI 実行結果を表す判別ユニオン。
@@ -46,13 +48,25 @@ const defaultDeps: Deps = {
  * ```
  */
 export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
-    if (args.length === 0) {
-        return { kind: "failure", exitCode: 1, stderr: "usage: specforge <spec.mmd>" };
+    // `verify` サブコマンドだけ別経路: TLA+ 化 → TLC を subprocess で実行
+    if (args[0] === "verify") {
+        return runVerify(args.slice(1));
+    }
+
+    const useTla = args.includes("--tla");
+    const positional = args.filter((a) => !a.startsWith("--"));
+    if (positional.length === 0) {
+        return {
+            kind: "failure",
+            exitCode: 1,
+            stderr: "usage: specforge [--tla] <spec.mmd|spec.md>\n" +
+                "       specforge verify <spec.mmd|spec.md>",
+        };
     }
 
     let raw: string;
     try {
-        raw = deps.readFile(args[0]);
+        raw = deps.readFile(positional[0]);
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return { kind: "failure", exitCode: 1, stderr: `could not read file: ${msg}` };
@@ -63,10 +77,39 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
     if (!result.ok) {
         return { kind: "failure", exitCode: 1, stderr: formatParseError(result.error) };
     }
-    return {
-        kind: "success",
-        stdout: generateCspm(result.value, doc.guards, doc.stateVars, doc.eventPayloads),
-    };
+    const stdout = useTla
+        ? generateTla(result.value, doc.guards, doc.stateVars)
+        : generateCspm(result.value, doc.guards, doc.stateVars, doc.eventPayloads);
+    return { kind: "success", stdout };
+};
+
+// `verify` サブコマンドの実装。verify モジュールへの委譲 + 結果を MainResult に整形。
+const runVerify = (verifyArgs: string[]): MainResult => {
+    if (verifyArgs.length === 0) {
+        return {
+            kind: "failure",
+            exitCode: 1,
+            stderr: "usage: specforge verify <spec.mmd|spec.md>",
+        };
+    }
+    const result = verify(verifyArgs[0]);
+    switch (result.kind) {
+        case "verified":
+            return { kind: "success", stdout: `verified ok\n\n${result.stdout}` };
+        case "failed":
+            return {
+                kind: "failure",
+                exitCode: 1,
+                stderr:
+                    `verification failed (code ${result.code})\n\n${result.stdout}\n\n${result.stderr}`,
+            };
+        case "tool_missing":
+            return { kind: "failure", exitCode: 2, stderr: result.message };
+        case "parse_error":
+            return { kind: "failure", exitCode: 1, stderr: result.message };
+        case "io_error":
+            return { kind: "failure", exitCode: 1, stderr: result.message };
+    }
 };
 
 if (import.meta.main) {

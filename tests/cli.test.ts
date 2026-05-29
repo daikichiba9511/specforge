@@ -78,3 +78,11 @@ Deno.test("main: .md input emits channels + process parameters (Phase 4)", () =>
     assertEquals(r.stdout.includes("A(x) ="), true);
     assertEquals(r.stdout.includes("B(x)"), true);
 });
+
+Deno.test("main: --tla flag switches to TLA+ backend", () => {
+    const r = main(["--tla", "spec.md"], { readFile: () => MARKDOWN_SPEC });
+    assertEquals(r.kind, "success");
+    if (r.kind !== "success") return;
+    assertEquals(r.stdout.startsWith("---- MODULE Spec ----"), true);
+    assertEquals(r.stdout.includes("Spec == Init /\\ [][Next]_vars"), true);
+});

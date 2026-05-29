@@ -362,10 +362,27 @@ state "サンプリング中" as Sampling
 
 ---
 
-## 7. CSPm 変換セマンティクス (informative)
+## 7. CSPm / TLA+ 変換セマンティクス (informative)
 
-本セクションは **どう変換するか**の方針を informative に示す。実装が未完の項目を含むため、現状の
-`src/cspm.ts` の挙動と差がある点に注意 (sketch 段階)。
+specforge は同じ AST から 2 つの形式に変換できる:
+
+- **CSPm** (`src/cspm.ts`): FDR4 入力。プロセス代数。default 出力。 `deno task cli spec.md`
+- **TLA+** (`src/tla.ts`): TLC 入力。状態機械 + 時相論理。`deno task cli --tla spec.md` または
+  `deno task verify spec.md` (TLC で検証まで実行)
+
+TLA+ 変換の概要 (Phase A: flat states):
+
+- state → `phase` 変数の値 (`phase \in {"A", "B", ...}`)
+- state var → TLA+ 変数 (`VARIABLES phase, count, ...`)、初期値 0
+- 各 transition → action 述語
+  `<From>_<event>_<To> == phase = "From" /\ guard /\ phase' = "To" /\ UNCHANGED <<...>>`
+- guard → conjunct (ガード辞書で式に置換)
+- `X --> [*]` → X を TerminalStates に追加、`Stutter == phase \in TerminalStates /\ UNCHANGED vars`
+  で TLC の deadlock 検出を回避
+- composite / 直交領域は **平坦化** (Phase B 送り)、parallel composition の意味は失われる
+- event payload binding は **未対応** (Phase B 送り)、state var は遷移で UNCHANGED 固定
+
+以下は CSPm 側の方針 (informative)。実装は `src/cspm.ts` を参照。
 
 ### 7.1 状態 → プロセス
 

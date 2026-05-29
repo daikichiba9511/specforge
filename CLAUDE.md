@@ -107,27 +107,38 @@ prefix imports — Bun is fine for local dev iteration.
   `?` 受信パターンに変換 (Phase 3), **プロセスパラメータ threading + Spec entry point** (Phase 4)
 - `.md` 入力対応 (`src/spec_doc.ts`) — Mermaid block 抽出 + `### ガード定義` 表をガード辞書化 +
   `### 共有状態` 表から変数名抽出 + `### イベント契約` 表から event payload 抽出
-- CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、CSPm を stdout 出力
-- Parser tests + cspm tests + spec_doc tests + cli tests
+- **TLA+ generator (`src/tla.ts`)** — Phase A (flat states): VARIABLES / Init / Next / Spec、 各
+  transition を `<From>_<event>_<To>` action として emit、terminal state は Stutter で処理。
+  composite / 直交領域は平坦化 (Phase B 送り)
+- **`specforge verify` (`src/verify.ts`)** — spec → TLA+ → 一時ファイル →
+  `java -cp tla2tools.jar
+  tlc2.TLC` を subprocess 実行 → 結果サマリ。java と tla2tools.jar
+  の検出付き
+- CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、デフォルトは CSPm、`--tla` で TLA+、`verify`
+  サブコマンドで TLC 検証
+- Parser tests + cspm tests + tla tests + spec_doc tests + cli tests + verify tests
 - Example spec (`examples/traffic-light.mmd`)
 - CI workflow (`deno fmt --check`, `deno lint`, `deno check`, `deno test`)
 - Benches (`bench/*_bench.ts`) + before/after 比較 (`bench/compare.ts`) — `docs/perf.md`
 
 **Pending (next-session priorities, roughly in order)**:
 
-1. **Validation pass**: post-parse pass to enforce CSP-friendly subset (warn on suspect labels,
-   reject unparseable guards, ガード辞書に無いタグを warning, payload field 名と state var 名の
-   不整合 etc.)。
-2. **FDR4 invocation**: `specforge verify spec.md` のような専用コマンドで `fdr4 batch-process` を
-   subprocess 実行 + 結果パース。Phase 4 まで終わって生成 CSPm が valid な構造になったので
-   ここから実機で動かす段階。
-3. **JSON output mode** for piping into other tools.
-4. **Self-dogfood milestone**: `specforge docs/behavior.md` + fdr4 で specforge 自身のパイプライン
-   spec の deadlock-freeness と termination を検証する。Phase 4 で技術的に可能になった。
-5. **Action update semantics (Phase 5)**: 現在 action は opaque な channel として扱われ、 state var
-   を更新できない。`update_count` のような action で param を書き換える semantics を 入れるなら、AST
-   拡張 (action にメタ情報) + spec-behavior 側の規律拡張が必要。
-6. **TLA+ backend** (eventual): same AST, different generator. Stub `src/tla.ts`.
+1. **TLA+ Phase B (composite / 直交領域)**: 現状 composite は state として平坦化されるだけで
+   parallel composition の意味が失われる。hitl spec の `ParallelSetup` を TLA+ で正しく表現する には
+   region ごとの phase 変数 + completion 同期が必要。
+2. **TLA+ event payload binding**: 現状 state var は遷移で UNCHANGED 固定。 event payload を
+   `\E
+   new_var \in Domain` で非決定的に受け取って `var' = new_var` する形にすると、CSPm Phase 3+4
+   相当の意味論になる。 hitl の guard `catalog_size > 0` 等が真に効くようになる。
+3. **Validation pass**: post-parse pass で「ガード辞書漏れ」「未宣言変数の参照」「未到達 state」
+   等を warning 報告。fix 候補も併記すると UX 向上。
+4. **JSON output mode** for piping into other tools.
+5. **Self-dogfood milestone**: `specforge verify docs/behavior.md` で specforge 自身のパイプライン
+   を TLC で検証。Phase A+C で技術的に可能、Phase B でより意味のある検証になる。
+6. **CSPm 側の磨き込み**: FDR4 で動かす場合のテスト (FDR4 を手動インストールしたら)、もしくは FDR4
+   を諦めて CSPm 出力を archive 化する選択。
+7. **Action update semantics (将来)**: action による state var 更新セマンティクス。AST 拡張 +
+   spec-behavior 側の規律拡張が必要。
 
 ## How to develop
 
@@ -147,13 +158,23 @@ deno task test       # run tests
 deno task fmt        # format
 deno task lint       # lint
 deno task check      # type check
-deno task cli examples/traffic-light.mmd   # run on example
+deno task cli examples/traffic-light.mmd          # CSPm 出力
+deno task cli --tla examples/traffic-light.mmd    # TLA+ 出力
+deno task verify examples/traffic-light.mmd       # spec → TLA+ → TLC で検証
 deno task compile    # produce bin/specforge binary
 deno task bench      # run all benchmarks
 deno task bench:compare /tmp/before.json /tmp/after.json   # compare two `deno bench --json` runs
 ```
 
 パフォーマンス周りは `docs/perf.md` に詳細あり。
+
+### `verify` の前提
+
+- **Java**: `brew install openjdk` で OpenJDK が入る。verify は `/opt/homebrew/opt/openjdk/bin/java`
+  → `JAVA_HOME/bin/java` → `/usr/bin/java` の順で探す
+- **tla2tools.jar**: https://github.com/tlaplus/tlaplus/releases/latest から DL し
+  `~/.local/share/specforge/tla2tools.jar` に配置 (もしくは `SPECFORGE_TLA_JAR` env var で上書き)
+- TLA+ module 名は `Spec` 固定 (一時ファイルが `Spec.tla` / `Spec.cfg`)
 
 ## Key references (in dotfiles / outside repo)
 
