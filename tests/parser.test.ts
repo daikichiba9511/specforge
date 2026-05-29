@@ -1,17 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { parse, type ParseError } from "../src/parser.ts";
 import type { Diagram } from "../src/types.ts";
-import type { Result } from "../src/result.ts";
-
-const expectOk = <T, E>(r: Result<T, E>): T => {
-    if (!r.ok) throw new Error(`expected ok, got error: ${JSON.stringify(r.error)}`);
-    return r.value;
-};
-
-const expectErr = <T, E>(r: Result<T, E>): E => {
-    if (r.ok) throw new Error(`expected error, got ok: ${JSON.stringify(r.value)}`);
-    return r.error;
-};
+import { expectErr, expectOk } from "./_helpers.ts";
 
 Deno.test("parses minimal stateDiagram-v2", () => {
     const diagram: Diagram = expectOk(parse(`stateDiagram-v2
