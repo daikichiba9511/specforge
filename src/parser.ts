@@ -8,12 +8,12 @@ export type ParseError = {
 };
 
 const RE_HEADER = /^stateDiagram-v2\b/;
-const RE_COMPOSITE = /^state\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{$/;
-const RE_ALIAS = /^state\s+"([^"]*)"\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/;
-const RE_STATE_DECL = /^state\s+([A-Za-z_][A-Za-z0-9_]*)$/;
+const RE_COMPOSITE = /^state\s+(?<id>[A-Za-z_][A-Za-z0-9_]*)\s*\{$/;
+const RE_ALIAS = /^state\s+"(?<description>[^"]*)"\s+as\s+(?<id>[A-Za-z_][A-Za-z0-9_]*)$/;
+const RE_STATE_DECL = /^state\s+(?<id>[A-Za-z_][A-Za-z0-9_]*)$/;
 const RE_TRANSITION =
-    /^(\[\*\]|[A-Za-z_][A-Za-z0-9_]*)\s*-->\s*(\[\*\]|[A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*(.*))?$/;
-const RE_LABEL = /^([^\[\/]*?)\s*(?:\[([^\]]+)\])?\s*(?:\/\s*(.+))?$/;
+    /^(?<from>\[\*\]|[A-Za-z_][A-Za-z0-9_]*)\s*-->\s*(?<to>\[\*\]|[A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*(?<label>.*))?$/;
+const RE_LABEL = /^(?<event>[^\[\/]*?)\s*(?:\[(?<guard>[^\]]+)\])?\s*(?:\/\s*(?<action>.+))?$/;
 
 const stripComment = (line: string): string => {
     const idx = line.indexOf("%%");
@@ -23,13 +23,12 @@ const stripComment = (line: string): string => {
 const parseLabel = (raw: string): Label => {
     const trimmed = raw.trim();
     if (!trimmed) return { event: null, guard: null, action: null };
-    const m = RE_LABEL.exec(trimmed);
-    if (!m) return { event: trimmed, guard: null, action: null };
-    const [, ev, gd, ac] = m;
+    // RE_LABEL は trimmed が非空ならば必ず match する構造 (全 group が optional)。
+    const groups = RE_LABEL.exec(trimmed)?.groups ?? {};
     return {
-        event: ev.trim() || null,
-        guard: gd?.trim() ?? null,
-        action: ac?.trim() ?? null,
+        event: groups.event?.trim() || null,
+        guard: groups.guard?.trim() ?? null,
+        action: groups.action?.trim() ?? null,
     };
 };
 
@@ -50,46 +49,46 @@ export const parse = (input: string): Result<Diagram, ParseError> => {
     const parseStmt = (): Result<Stmt, ParseError> => {
         const trimmed = lines[pos].trim();
 
-        const composite = RE_COMPOSITE.exec(trimmed);
-        if (composite) {
+        const compositeGroups = RE_COMPOSITE.exec(trimmed)?.groups;
+        if (compositeGroups?.id) {
             pos++;
             const regions = parseRegions(1);
             if (!regions.ok) return regions;
             return ok({
                 kind: "composite",
-                id: composite[1],
+                id: compositeGroups.id,
                 regions: regions.value,
             });
         }
 
-        const alias = RE_ALIAS.exec(trimmed);
-        if (alias) {
+        const aliasGroups = RE_ALIAS.exec(trimmed)?.groups;
+        if (aliasGroups?.id) {
             pos++;
             return ok({
                 kind: "alias",
-                description: alias[1],
-                id: alias[2],
+                description: aliasGroups.description ?? "",
+                id: aliasGroups.id,
             });
         }
 
-        const stateDecl = RE_STATE_DECL.exec(trimmed);
-        if (stateDecl) {
+        const stateDeclGroups = RE_STATE_DECL.exec(trimmed)?.groups;
+        if (stateDeclGroups?.id) {
             pos++;
             return ok({
                 kind: "alias",
                 description: "",
-                id: stateDecl[1],
+                id: stateDeclGroups.id,
             });
         }
 
-        const trans = RE_TRANSITION.exec(trimmed);
-        if (trans) {
+        const transGroups = RE_TRANSITION.exec(trimmed)?.groups;
+        if (transGroups?.from && transGroups.to) {
             pos++;
             return ok({
                 kind: "transition",
-                from: trans[1],
-                to: trans[2],
-                label: parseLabel(trans[3] ?? ""),
+                from: transGroups.from,
+                to: transGroups.to,
+                label: parseLabel(transGroups.label ?? ""),
             });
         }
 
