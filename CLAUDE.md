@@ -122,23 +122,24 @@ prefix imports — Bun is fine for local dev iteration.
 - Example spec (`examples/traffic-light.mmd`)
 - CI workflow (`deno fmt --check`, `deno lint`, `deno check`, `deno test`)
 - Benches (`bench/*_bench.ts`) + before/after 比較 (`bench/compare.ts`) — `docs/perf.md`
+- **Self-dogfood 達成**: `deno task verify docs/behavior.md` で specforge 自身のパイプライン
+  (Reading → Parsing → Validating → Generating → Done/Failed) を TLC が deadlock-free と判定 (10
+  states / 6 distinct)。 spec-behavior skill → Mermaid + markdown tables → specforge → TLA+ → TLC
+  のチェーンが end-to-end で動くことを実証
 
 **Pending (next-session priorities, roughly in order)**:
 
 1. **Validation pass**: post-parse pass で「ガード辞書漏れ」「未宣言変数の参照」「未到達 state」
    「event payload field 名と state var 名のミスマッチ」等を warning 報告。fix 候補も併記して UX
    改善。
-2. **Self-dogfood milestone**: `specforge verify docs/behavior.md` で specforge 自身のパイプライン
-   を TLC で検証。Phase B + 2 が完了したのでここから実行可能。`docs/behavior.md` の state 機械を
-   `.md` 化して動かす。
-3. **JSON output mode** for piping into other tools.
-4. **Liveness / fairness 検証**: 現状 `assert Spec :[deadlock free]` 相当のみ。 weak/strong fairness
+2. **JSON output mode** for piping into other tools.
+3. **Liveness / fairness 検証**: 現状 `assert Spec :[deadlock free]` 相当のみ。 weak/strong fairness
    仮定を `.cfg` に書く、`PROPERTY <>Terminated` 形の liveness check を生成する形で拡張可能。
-5. **状態空間の bound 調整**: `Domain == 0..1` 固定だと数値比較の意味が薄い (`>0` と `==0` の 2 値
+4. **状態空間の bound 調整**: `Domain == 0..1` 固定だと数値比較の意味が薄い (`>0` と `==0` の 2 値
    しか区別できない)。CLI flag や spec 内 annotation で `0..N` を上書きできるようにする。
-6. **CSPm 側の磨き込み**: FDR4 で動かす場合のテスト (FDR4 を手動インストールしたら)、もしくは FDR4
+5. **CSPm 側の磨き込み**: FDR4 で動かす場合のテスト (FDR4 を手動インストールしたら)、もしくは FDR4
    を諦めて CSPm 出力を archive 化する選択。
-7. **Action update semantics (将来)**: action による state var 更新セマンティクス。AST 拡張 +
+6. **Action update semantics (将来)**: action による state var 更新セマンティクス。AST 拡張 +
    spec-behavior 側の規律拡張が必要。
 
 ## How to develop

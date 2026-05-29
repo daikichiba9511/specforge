@@ -97,6 +97,16 @@ stateDiagram-v2
 `warning_count` はガードでは使わない (現状は warning ありでも続行)。`--strict` モード対応時に
 `has_errors` を `error_count > 0 || (strict_mode && warning_count > 0)` に拡張する想定。
 
+### 共有状態
+
+`validate_done` イベントの payload で送られてきた値をガードで参照するため、 specforge の TLA+
+backend が `\E new_<var>` で非決定 bind するための state var として宣言する。
+
+| 変数            | 型        | 書き手    | 読み手                                          |
+| --------------- | --------- | --------- | ----------------------------------------------- |
+| `error_count`   | int (>=0) | Validator | `Validating` 遷移時の `no_errors`/`has_errors`  |
+| `warning_count` | int (>=0) | Validator | (現状ガード未使用、`--strict` モードで使用予定) |
+
 ---
 
 ## 設計メモ
