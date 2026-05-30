@@ -314,9 +314,11 @@ parse 後に走る別パス。**parser は構文のみ受理 / 拒絶**し、意
 - **V002** — ガード式が state var / event payload のどちらにも無い識別子を参照
 - **V003** — composite region に `[*] --> <entry>` の初期遷移が無い
 - **V004** — state は宣言されているが、 どの transition の `to` にも現れない (= 未到達)
+- **V005** — state は到達可能だが、 どの transition の `from` にも現れない (= 出口なし、 stuck
+  可能性)。 V004 と排他
 
-V005 以降は [`../tasks/todo.md`](../tasks/todo.md) を参照 (出口なし state、 fuzzy ミスマッチ、 重複
-transition 検出 など)。
+V006 以降は [`../tasks/todo.md`](../tasks/todo.md) を参照 (fuzzy ミスマッチ、 重複 transition 検出
+など)。
 
 ---
 

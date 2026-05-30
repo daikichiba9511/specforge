@@ -178,6 +178,46 @@ Done --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V004").length, 0);
 });
 
+Deno.test("V005: reachable state with no outbound → warning", () => {
+    const report = validateOf(`stateDiagram-v2
+[*] --> A
+A --> Stuck
+A --> [*]`);
+    const v005 = report.issues.filter((i) => i.code === "V005");
+    assertEquals(v005.length, 1);
+    assertStringIncludes(v005[0].message, "Stuck");
+});
+
+Deno.test("V005: state with `--> [*]` outbound → no warning", () => {
+    const report = validateOf(`stateDiagram-v2
+[*] --> A
+A --> [*]`);
+    assertEquals(report.issues.filter((i) => i.code === "V005").length, 0);
+});
+
+Deno.test("V005: unreachable stuck state → V004 fires, V005 does not (mutually exclusive)", () => {
+    const report = validateOf(`stateDiagram-v2
+state Orphan
+[*] --> A
+A --> [*]`);
+    assertEquals(report.issues.filter((i) => i.code === "V004").length, 1);
+    assertEquals(report.issues.filter((i) => i.code === "V005").length, 0);
+});
+
+Deno.test("V005: stuck state inside composite region → warning", () => {
+    const report = validateOf(`stateDiagram-v2
+state Outer {
+    [*] --> Inner
+    Inner --> Stuck
+}
+[*] --> Outer
+Outer --> Done : / finish
+Done --> [*]`);
+    const v005 = report.issues.filter((i) => i.code === "V005");
+    assertEquals(v005.length, 1);
+    assertStringIncludes(v005[0].message, "Stuck");
+});
+
 Deno.test("clean spec produces no issues", () => {
     const report = validateOf(
         `stateDiagram-v2

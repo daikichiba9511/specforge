@@ -15,9 +15,9 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
 
 ### Validation rules の拡張 (V005〜)
 
-- [ ] **V005**: state が `to` にはあるが `from` にない (= 出口なし、非 terminal なのに stuck
-      する可能性)。 ただし `--> [*]` がある state は除外。 `examples/deadlock.md` の Stuck が
-      該当する pattern を静的に検出できるようにする。 ~30 LOC + tests
+- [x] **V005**: 到達可能だが出口無しの state を検出。 `examples/deadlock.md` の `Stuck` を静的検出
+      可能になり、 TLC の動的 deadlock 検出と相補。 V004 と排他 (未到達なら V004、 到達可能で
+      出口無しなら V005)
 - [ ] **V006**: event payload field の名前が state var とミスマッチ警告。 「state var に似てる けど
       1 文字違い」を Levenshtein でなく簡易な fuzzy match で。 開発中のリネームミス検出用
 - [ ] **V007**: 同一 (from, to, event, guard) 組合せが複数 transition 出現 → warning。 hitl
@@ -109,7 +109,7 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
       substitution / state var declarations / payload binding / process parameter threading
 - [x] TLA+ backend (Phase A + B + 2): flat / composite / 直交領域 / payload binding
 - [x] `specforge verify` (TLC subprocess wrapper) + `--bound=N` で 状態空間調整
-- [x] Validation pass V001〜V004 + `--strict` flag
+- [x] Validation pass V001〜V005 + `--strict` flag
 - [x] `--json` output mode
 - [x] Self-dogfood: `docs/behavior.md` 自身を TLC で verified ok
 - [x] examples 8 例: traffic-light / vending-machine / db-connection-pool / producer-consumer /

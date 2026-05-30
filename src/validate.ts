@@ -91,6 +91,8 @@ const regionHasEntry = (region: Region): boolean => {
  * - **V003**: composite の region に `[*] --> <entry>` の初期遷移が無い (region 入口が SKIP に
  *   フォールバックして TLA+ / CSPm の意味がおかしくなる)
  * - **V004**: state が宣言されているが、 どの transition の `to` にも現れない (= 未到達)
+ * - **V005**: state は到達可能だが、 どの transition の `from` にも現れない (= 出口なし、 stuck
+ *   する可能性)。 V004 と排他: 未到達状態は V004 のみ、 到達可能 + 出口なしは V005 のみ
  *
  * 各 issue は `level: "warning"` で返す。CLI 側 `--strict` で warning → 失敗に昇格させる。
  *
@@ -159,9 +161,12 @@ export const validate = (diagram: Diagram, doc: SpecDoc): ValidationReport => {
     }
 
     // V004: 未到達 state — 宣言されているが誰の to にもならない
+    // V005: 出口なし state — 到達可能だが誰の from にもならない (stuck パターン)
     const reachable = new Set<string>();
+    const hasOutbound = new Set<string>();
     for (const t of transitions) {
         if (!isPseudoState(t.to)) reachable.add(t.to);
+        if (!isPseudoState(t.from)) hasOutbound.add(t.from);
     }
     const declared = collectDeclaredStates(diagram);
     for (const name of declared) {
@@ -172,6 +177,15 @@ export const validate = (diagram: Diagram, doc: SpecDoc): ValidationReport => {
                 message:
                     `state '${name}' is declared but unreachable (no transition has it as 'to')`,
                 suggestion: `Add a transition '<from> --> ${name}' from a reachable state, ` +
+                    `or remove the declaration if intentional.`,
+            });
+        } else if (!hasOutbound.has(name)) {
+            issues.push({
+                level: "warning",
+                code: "V005",
+                message: `state '${name}' has no outbound transition (will stuck if reached, ` +
+                    `no path forward or to terminal)`,
+                suggestion: `Add a transition '${name} --> <next>' or '${name} --> [*]', ` +
                     `or remove the declaration if intentional.`,
             });
         }

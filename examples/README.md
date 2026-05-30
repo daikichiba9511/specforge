@@ -20,10 +20,10 @@
 
 ### 意図的に問題のある例 (specforge / TLC の検出機能を実演)
 
-| 例                                               | 何を実演するか                                              | 期待される挙動                                                          |
-| ------------------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`deadlock.md`](./deadlock.md)                   | composite region 内に出口なしの state → 完了不可で TLC 検出 | `verify` → `Error: Deadlock reached.` (exit 11)                         |
-| [`unreachable-state.md`](./unreachable-state.md) | 宣言されているが誰からも到達されない state → V004 warning   | `cli` で `warn V004: state 'Orphan' is unreachable`、`verify` 自体は ok |
+| 例                                               | 何を実演するか                                                                      | 期待される挙動                                                                                       |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [`deadlock.md`](./deadlock.md)                   | composite region 内に出口なしの state → V005 で静的検出 + 完了不可で TLC が動的検出 | `cli` で `warn V005: state 'Stuck' has no outbound`、`verify` → `Error: Deadlock reached.` (exit 11) |
+| [`unreachable-state.md`](./unreachable-state.md) | 宣言されているが誰からも到達されない state → V004 warning                           | `cli` で `warn V004: state 'Orphan' is unreachable`、`verify` 自体は ok                              |
 
 ## 各例の使い分け
 

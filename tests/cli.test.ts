@@ -3,7 +3,8 @@ import { main } from "../src/cli.ts";
 
 const VALID_SPEC = `stateDiagram-v2
     [*] --> A
-    A --> B : event / action`;
+    A --> B : event / action
+    B --> [*]`;
 
 const INVALID_SPEC = `not a spec at all`;
 
