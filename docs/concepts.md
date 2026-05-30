@@ -70,6 +70,9 @@ CSPm) に変換することで、 「人が書きやすい層」と「機械が�
 つまり spec-behavior は **「形式検証可能な拡張状態機械の書き方を人間にやさしい形で規律化したもの」**
 と言える。 specforge はその規律を機械的にチェッカ入力へ落とす変換器。
 
+> 遷移ラベル `event [guard] / action` の読み下し方や省略パターンの詳細は
+> [`./label-reading.md`](./label-reading.md) を参照。
+
 ---
 
 ## 3. 形式手法とは何が嬉しいのか
@@ -116,6 +119,9 @@ CSPm は CSP の機械可読方言で、 **FDR4** が検証器。 主に確認�
 - **divergence-free**: 内部 event が無限ループしない
 
 specforge は CSPm 出力を持つが、 FDR4 の入手性が悪いので **secondary backend** 扱い。
+
+> 演算子の意味、 合成 / 同期の読み分け、 specforge 生成 CSPm の読み方は
+> [`./csp-reading.md`](./csp-reading.md) を参照。
 
 ### 4.2 TLA+ (Temporal Logic of Actions)
 
@@ -373,6 +379,10 @@ specforge は「形式検証への入り口」を低くするツールで、 形
 
 ### 本リポジトリ内の関連 doc
 
+- [`./label-reading.md`](./label-reading.md) — `event [guard] / action` ラベルの読み方 (UML 慣習、
+  省略パターン、 実行順序)
+- [`./csp-reading.md`](./csp-reading.md) — CSP / CSPm の読み方 (演算子、 合成、 同期、 specforge
+  生成 CSPm の読み下し)
 - [`./spec.md`](./spec.md) — specforge 入力言語契約 (Mermaid サブセット + 補助情報)
 - [`./behavior.md`](./behavior.md) — specforge 自身の振る舞い仕様 (self-dogfood)
 - [`./decisions.md`](./decisions.md) — 設計判断記録 + 未決問題
