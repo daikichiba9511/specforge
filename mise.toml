@@ -1,0 +1,7 @@
+[tools]
+deno = "2"
+java = "openjdk-21"
+
+# tla2tools.jar は mise では管理しない。
+# `nix develop` を使うと自動で SPECFORGE_TLA_JAR が設定される。
+# mise 派は README の「環境構築 - mise」節を参照して手動で配置する。

@@ -29,6 +29,41 @@ and how the tool connects the human-readable spec layer to TLA+ / TLC verificati
 Remaining work is enumerated in [`tasks/todo.md`](./tasks/todo.md) with priority and size
 annotations.
 
+## Setup
+
+開発環境は次の 3 通りで用意できる。
+
+### Nix flake (推奨、再現性最高)
+
+```bash
+nix develop
+```
+
+Deno 2 / OpenJDK 21 / `tla2tools.jar` (v1.7.4) が揃った shell に入る。`SPECFORGE_TLA_JAR` と
+`JAVA_HOME` も自動で設定されるので `deno task verify` がそのまま動く。
+
+### mise
+
+```bash
+mise install
+```
+
+Deno 2 と OpenJDK 21 が入る (`mise.toml` で pin)。`verify` を使う場合は別途 `tla2tools.jar`
+を配置する:
+
+```bash
+mkdir -p ~/.local/share/specforge
+curl -L -o ~/.local/share/specforge/tla2tools.jar \
+  https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
+```
+
+`SPECFORGE_TLA_JAR` env var で任意のパスを指定することもできる。
+
+### 手動
+
+`brew install deno openjdk` などで Deno と OpenJDK を入れ、`tla2tools.jar` は上記 mise 節と
+同じ手順で配置する。詳細は [`CLAUDE.md`](./CLAUDE.md) の `verify の前提` 節。
+
 ## Quickstart
 
 ```bash
@@ -37,9 +72,6 @@ deno task cli examples/vending-machine.md               # CSPm output (default)
 deno task cli --tla examples/vending-machine.md         # TLA+ output
 deno task verify --bound=3 examples/vending-machine.md  # verify deadlock-freeness with TLC
 ```
-
-Running `verify` requires Java and `tla2tools.jar`; see the `verify の前提` section in
-[`CLAUDE.md`](./CLAUDE.md) for setup details.
 
 ## Tech stack
 

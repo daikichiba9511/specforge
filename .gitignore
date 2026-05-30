@@ -12,6 +12,11 @@ bin/
 .vscode/
 .idea/
 
+# Nix
+result
+result-*
+.direnv/
+
 # Logs / temp
 *.log
 *.tmp
