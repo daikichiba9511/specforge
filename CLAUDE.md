@@ -28,14 +28,16 @@ Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)   →  deadlock-f
 
 ## Canonical docs
 
+- **[`docs/concepts.md`](./docs/concepts.md)** — 基本概念と背景 (拡張状態機械 / CSP / TLA+ / safety
+  vs liveness / fairness / 検証できること & できないこと)。 新規ユーザはまずこれを読む
 - **[`docs/spec.md`](./docs/spec.md)** — 入力言語契約 (Mermaid サブセット / BNF / 遷移ラベル /
   補助情報 / TLA+ + CSPm 変換セマンティクス)
 - **[`docs/behavior.md`](./docs/behavior.md)** — specforge 自身のランタイム振る舞い仕様
-  (`spec-behavior` 流の self-dogfood ターゲット、 TLC verified deadlock-free 済)
+  (`spec-behavior` 流の self-dogfood ターゲット、 TLC verified deadlock-free + termination 済)
 - **[`docs/perf.md`](./docs/perf.md)** — bench (`deno task bench`) workflow / before-after 比較 /
   CPU プロファイル取得手順
 - **[`docs/decisions.md`](./docs/decisions.md)** — 採用済の設計判断 (Deno 採用 / hand-roll parser /
-  TLA+ primary 等) + 未決の問題 (open design questions)
+  TLA+ primary / WF on Next default 等) + 未決の問題 (open design questions)
 - **[`tasks/todo.md`](./tasks/todo.md)** — 残タスク (Pri A/B/C, Size S/M/L) + 完了履歴サマリ +
   「意図的にやらない」決定の記録
 - **[`examples/README.md`](./examples/README.md)** — 8 例 (正常 6 + 反例 2)

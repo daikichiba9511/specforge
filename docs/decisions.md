@@ -41,6 +41,31 @@ PoC 当初は CSPm + FDR4 が primary だったが:
 
 CSPm 出力は残してあるが、 FDR4 環境がある場合の追加検証用という位置付け (archive backend)。
 
+### D-05: Liveness は `### Liveness` 表で opt-in、 fairness は WF on Next default
+
+`### Liveness` 表が無い spec は safety only (deadlock-free のみ check) で従来通り。 1 件以上
+宣言された spec に対してのみ:
+
+- TLA+ に `Terminated == phase \in TerminalStates`、 `Fairness == WF_vars(Next)`、 各 property
+  定義を emit
+- Spec を `Init /\ [][Next]_vars /\ Fairness` に拡張
+- `.cfg` に `PROPERTY <name>` 行を追加
+
+**なぜ opt-in にしたか**:
+
+- 既存 spec の挙動を変えない (後方互換)
+- liveness は fairness 仮定が不可欠で、 安易に default 有効化すると pathological stutter loop の
+  検出ができなくなる
+- 仕様 author が「進行性を要求するか」を意識的に宣言する形にしたい
+
+**なぜ WF on Next を default にしたか**:
+
+- 多くの状態機械では「event は遅延しても最終的に処理される」(= WF) で十分
+- Strong fairness (SF) は「無限に何度も enable される action は必ず firing」というより強い仮定で、
+  実装上の保証も困難
+- 細かい action 別の WF/SF 指定は将来の `### Fairness` 表で override 可能にする予定 (tasks/todo.md
+  参照)
+
 ---
 
 ## 未決の問題 (open design questions)

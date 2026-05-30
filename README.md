@@ -18,8 +18,13 @@ mermaid spec.md  →  AST + side tables  →  TLA+  →  TLC (deadlock-free / li
 
 Functional. The parser covers the `spec-behavior` Mermaid subset; both backends emit composite /
 orthogonal regions, event payload binding, guard substitution, and state variable threading.
-Validation pass V001-V004 flags common spec mistakes (`--strict` promotes warnings to failures).
-specforge verifies its own `docs/behavior.md` via TLC (self-dogfood, deadlock-free).
+Validation pass V001-V007 flags common spec mistakes (`--strict` promotes warnings to failures).
+Liveness / fairness verification via a `### Liveness` markdown table (TLA+ `<>Terminated` etc. +
+`WF_vars(Next)` fairness assumption). specforge verifies its own `docs/behavior.md` via TLC for both
+deadlock-freeness and termination (self-dogfood).
+
+If you are new, start with [`docs/concepts.md`](./docs/concepts.md) for the theoretical background
+and how the tool connects the human-readable spec layer to TLA+ / TLC verification.
 
 Remaining work is enumerated in [`tasks/todo.md`](./tasks/todo.md) with priority and size
 annotations.
@@ -44,6 +49,8 @@ Tests: `deno test` + `jsr:@std/assert`.
 
 ## Docs
 
+- [`docs/concepts.md`](./docs/concepts.md) — primer: state machines, CSP / TLA+ basics, what the
+  tool connects, and what TLC can verify (start here if you are new)
 - [`docs/spec.md`](./docs/spec.md) — input language contract (Mermaid subset / BNF / transition
   label format / side artifacts / TLA+ + CSPm conversion semantics)
 - [`docs/behavior.md`](./docs/behavior.md) — specforge's own runtime behavior, written as a
