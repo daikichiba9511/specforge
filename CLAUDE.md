@@ -48,7 +48,7 @@ Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)   →  deadlock-f
   payload binding / process parameter threading
 - TLA+ Phase A + B + 2: flat / composite + 直交領域 / event payload binding
 - `specforge verify` (TLC subprocess wrapper) + `--bound=N` で状態空間調整
-- Validation V001〜V005, V007 + `--strict` flag、 `--json` output mode (V006 は WIP)
+- Validation V001〜V007 + `--strict` flag、 `--json` output mode
 - self-dogfood 達成 (`docs/behavior.md` を TLC verified deadlock-free、 10 states / 6 distinct)
 - 8 examples (正常 6 + deadlock / unreachable 反例 2) + CI + bench
 

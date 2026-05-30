@@ -316,11 +316,12 @@ parse 後に走る別パス。**parser は構文のみ受理 / 拒絶**し、意
 - **V004** — state は宣言されているが、 どの transition の `to` にも現れない (= 未到達)
 - **V005** — state は到達可能だが、 どの transition の `from` にも現れない (= 出口なし、 stuck
   可能性)。 V004 と排他
+- **V006** — event payload field が state var と「似ているが一致しない」 (1 文字違い or
+  case/underscore 差) → タイポ / 命名規則漏れの疑い。 完全一致は Phase 2 binding 対象なので警告外
 - **V007** — 同一 `(from, to, event, guard)` の tuple が複数 transition に出現 (action だけ違う、
   完全重複 等)
 
-V006 (event payload と state var の fuzzy ミスマッチ) は [`../tasks/todo.md`](../tasks/todo.md)
-参照。
+V008 以降は [`../tasks/todo.md`](../tasks/todo.md) 参照。
 
 ---
 

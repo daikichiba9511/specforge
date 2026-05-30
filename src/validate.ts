@@ -45,6 +45,45 @@ const extractIdentifiers = (expr: string): string[] => {
     return [...matches].map((m) => m[0]);
 };
 
+// V006 用: 名前を case-insensitive かつ underscore を除いた canonical 形にする。
+// 例: `CatalogSize` / `catalog_size` / `catalogsize` → 全部 `catalogsize`
+const normalizeName = (s: string): string => s.toLowerCase().replace(/_/g, "");
+
+// V006 用: Levenshtein 1 相当を full DP テーブル無しに判定する。
+// - 同長: 1 substitution のみで一致するか
+// - 長さ差 1: 1 insertion / 1 deletion のみで一致するか
+// 完全一致 (`a === b`) は「off」ではないので false を返す。
+const isOneCharOff = (a: string, b: string): boolean => {
+    if (a === b) return false;
+    const lenDiff = Math.abs(a.length - b.length);
+    if (lenDiff > 1) return false;
+    if (a.length === b.length) {
+        let diffs = 0;
+        for (let i = 0; i < a.length; i++) {
+            if (a[i] !== b[i]) {
+                diffs++;
+                if (diffs > 1) return false;
+            }
+        }
+        return diffs === 1;
+    }
+    // 長さ差 1: 短い方を長い方から 1 文字削除して一致するかを線形走査で確認
+    const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
+    let i = 0, j = 0;
+    let skipped = false;
+    while (i < shorter.length && j < longer.length) {
+        if (shorter[i] === longer[j]) {
+            i++;
+            j++;
+        } else {
+            if (skipped) return false;
+            skipped = true;
+            j++;
+        }
+    }
+    return true;
+};
+
 const collectTransitions = (diagram: Diagram): Transition[] => {
     const result: Transition[] = [];
     const recur = (regions: Region[]): void => {
@@ -93,6 +132,9 @@ const regionHasEntry = (region: Region): boolean => {
  * - **V004**: state が宣言されているが、 どの transition の `to` にも現れない (= 未到達)
  * - **V005**: state は到達可能だが、 どの transition の `from` にも現れない (= 出口なし、 stuck
  *   する可能性)。 V004 と排他: 未到達状態は V004 のみ、 到達可能 + 出口なしは V005 のみ
+ * - **V006**: event payload field の名前が state var と「似ているが一致しない」 (1 文字違い or
+ *   case/underscore 差) → タイポ / 命名規則漏れの疑い。 完全一致は Phase 2 binding の対象なので
+ *   warn しない
  * - **V007**: 同一 `(from, to, event, guard)` の tuple が複数 transition に出現 (action だけ違う、
  *   完全重複等)。 ガード競合 / 重複定義 の可能性
  *
@@ -190,6 +232,46 @@ export const validate = (diagram: Diagram, doc: SpecDoc): ValidationReport => {
                 suggestion: `Add a transition '${name} --> <next>' or '${name} --> [*]', ` +
                     `or remove the declaration if intentional.`,
             });
+        }
+    }
+
+    // V006: event payload field と state var の fuzzy ミスマッチ
+    // - 完全一致は Phase 2 binding 対象なので skip
+    // - 正規化 (lowercase + underscore 除去) で一致 → case/underscore 差を警告
+    // - 1 文字違い → タイポを警告
+    // 報告は payload-field ごとに 1 件 (正規化一致を優先、 次に 1 文字違い)
+    const stateVarSet = new Set(doc.stateVars);
+    const stateVarByNormalized = new Map<string, string>();
+    for (const sv of doc.stateVars) {
+        stateVarByNormalized.set(normalizeName(sv), sv);
+    }
+    for (const [eventName, payloadFields] of doc.eventPayloads) {
+        for (const p of payloadFields) {
+            if (stateVarSet.has(p)) continue;
+            const normMatch = stateVarByNormalized.get(normalizeName(p));
+            if (normMatch && normMatch !== p) {
+                issues.push({
+                    level: "warning",
+                    code: "V006",
+                    message: `event '${eventName}' payload field '${p}' normalizes to ` +
+                        `state var '${normMatch}' (case/underscore mismatch)`,
+                    suggestion: `If they should be the same, rename one to match. Otherwise pick ` +
+                        `clearly distinct names.`,
+                });
+                continue;
+            }
+            for (const sv of doc.stateVars) {
+                if (!isOneCharOff(p, sv)) continue;
+                issues.push({
+                    level: "warning",
+                    code: "V006",
+                    message: `event '${eventName}' payload field '${p}' is 1 character off ` +
+                        `from state var '${sv}' (possible typo)`,
+                    suggestion: `If you meant '${sv}', rename the payload field. Otherwise ` +
+                        `rename to avoid confusion.`,
+                });
+                break;
+            }
         }
     }
 

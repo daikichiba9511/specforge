@@ -256,6 +256,109 @@ B --> [*]`);
     assertStringIncludes(v007[0].message, "3 transitions");
 });
 
+Deno.test("V006: payload field exact match with state var → no warning (Phase 2 binding)", () => {
+    const report = validateOf(
+        `stateDiagram-v2
+A --> B : ev
+B --> [*]`,
+        {
+            stateVars: ["balance"],
+            eventPayloads: new Map([["ev", ["balance"]]]),
+        },
+    );
+    assertEquals(report.issues.filter((i) => i.code === "V006").length, 0);
+});
+
+Deno.test("V006: payload field 1 char off from state var (substitution) → warning", () => {
+    const report = validateOf(
+        `stateDiagram-v2
+A --> B : ev
+B --> [*]`,
+        {
+            stateVars: ["balance"],
+            eventPayloads: new Map([["ev", ["ballance"]]]), // 1 extra 'l'
+        },
+    );
+    const v006 = report.issues.filter((i) => i.code === "V006");
+    assertEquals(v006.length, 1);
+    assertStringIncludes(v006[0].message, "ballance");
+    assertStringIncludes(v006[0].message, "balance");
+    assertStringIncludes(v006[0].message, "1 character off");
+});
+
+Deno.test("V006: payload field normalizes to state var (case mismatch) → warning", () => {
+    const report = validateOf(
+        `stateDiagram-v2
+A --> B : ev
+B --> [*]`,
+        {
+            stateVars: ["catalog_size"],
+            eventPayloads: new Map([["ev", ["CatalogSize"]]]),
+        },
+    );
+    const v006 = report.issues.filter((i) => i.code === "V006");
+    assertEquals(v006.length, 1);
+    assertStringIncludes(v006[0].message, "CatalogSize");
+    assertStringIncludes(v006[0].message, "catalog_size");
+    assertStringIncludes(v006[0].message, "normalizes");
+});
+
+Deno.test("V006: underscore difference → normalized match warning", () => {
+    const report = validateOf(
+        `stateDiagram-v2
+A --> B : ev
+B --> [*]`,
+        {
+            stateVars: ["catalog_size"],
+            eventPayloads: new Map([["ev", ["catalogsize"]]]),
+        },
+    );
+    const v006 = report.issues.filter((i) => i.code === "V006");
+    assertEquals(v006.length, 1);
+    assertStringIncludes(v006[0].message, "normalizes");
+});
+
+Deno.test("V006: completely different name → no warning", () => {
+    const report = validateOf(
+        `stateDiagram-v2
+A --> B : ev
+B --> [*]`,
+        {
+            stateVars: ["balance"],
+            eventPayloads: new Map([["ev", ["timestamp"]]]), // not similar
+        },
+    );
+    assertEquals(report.issues.filter((i) => i.code === "V006").length, 0);
+});
+
+Deno.test("V006: 1 char insertion (`count` vs `counts`) → warning", () => {
+    const report = validateOf(
+        `stateDiagram-v2
+A --> B : ev
+B --> [*]`,
+        {
+            stateVars: ["count"],
+            eventPayloads: new Map([["ev", ["counts"]]]),
+        },
+    );
+    const v006 = report.issues.filter((i) => i.code === "V006");
+    assertEquals(v006.length, 1);
+});
+
+Deno.test("V006: 1 char deletion (`catlog` vs `catalog`) → warning", () => {
+    const report = validateOf(
+        `stateDiagram-v2
+A --> B : ev
+B --> [*]`,
+        {
+            stateVars: ["catalog"],
+            eventPayloads: new Map([["ev", ["catlog"]]]), // missing 'a'
+        },
+    );
+    const v006 = report.issues.filter((i) => i.code === "V006").length;
+    assertEquals(v006, 1);
+});
+
 Deno.test("clean spec produces no issues", () => {
     const report = validateOf(
         `stateDiagram-v2
