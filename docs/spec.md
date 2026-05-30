@@ -150,12 +150,16 @@ UML 慣習に従う。`event [guard] / action` の **3 つの省略可能な要�
 - アクション引数: `publish_failed(current_phase)`、`log(level, msg)` — 実行時引数
 - ガード内で引数参照: `pick(item) [item in displayed_items]`
 
+parser は event 部分の `name` と `args` を分割して AST の `Label.event` (bare 名)、
+`Label.eventArgs` (引数列) に格納する。 event 契約表との lookup は bare 名で行うので、 Mermaid 側が
+`event(arg)` 形式でも `event` 形式でも payload binding は同じく動く。
+
 引数の**型・形式の宣言は別途**:
 
 - multi-entity の場合: イベント契約表の `payload` 列 (§5.1)
 - 単一エンティティの場合: 設計メモの「状態変数 / イベント引数」セクション
 
-引数なしの場合は `()` を省略する (`timer` で OK、`timer()` は冗長)。
+引数なしの場合は `()` を省略可 (`timer` で OK、`timer()` も等価で受理)。
 
 ### 4.3 ガード式の制約
 

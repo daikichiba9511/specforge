@@ -14,8 +14,8 @@ stateDiagram-v2
 
     [*] --> Idle
 
-    Idle --> Selecting : coin_inserted [has_money]
-    Selecting --> Selecting : coin_inserted
+    Idle --> Selecting : coin_inserted(balance) [has_money]
+    Selecting --> Selecting : coin_inserted(balance)
     Selecting --> Dispensing : choose_item [can_afford] / lock_item
     Selecting --> Idle : refund / return_all
     Dispensing --> Done : / dispense_item

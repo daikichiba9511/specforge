@@ -93,6 +93,62 @@ Deno.test("parses label with only action (completion transition)", () => {
     assertEquals(t.label.actions, ["notify_complete"]);
 });
 
+Deno.test("event with single arg: bare name + eventArgs", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+    A --> B : coin_inserted(balance)`));
+    const t = diagram.regions[0].stmts[0];
+    if (t.kind !== "transition") throw new Error("expected transition");
+    assertEquals(t.label.event, "coin_inserted");
+    assertEquals(t.label.eventArgs, ["balance"]);
+});
+
+Deno.test("event with multiple args: split on comma, trim", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+    A --> B : log(level, msg)`));
+    const t = diagram.regions[0].stmts[0];
+    if (t.kind !== "transition") throw new Error("expected transition");
+    assertEquals(t.label.event, "log");
+    assertEquals(t.label.eventArgs, ["level", "msg"]);
+});
+
+Deno.test("event with empty parens: name only, args empty", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+    A --> B : timer()`));
+    const t = diagram.regions[0].stmts[0];
+    if (t.kind !== "transition") throw new Error("expected transition");
+    assertEquals(t.label.event, "timer");
+    assertEquals(t.label.eventArgs, []);
+});
+
+Deno.test("event without parens: eventArgs is empty array", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+    A --> B : timer`));
+    const t = diagram.regions[0].stmts[0];
+    if (t.kind !== "transition") throw new Error("expected transition");
+    assertEquals(t.label.event, "timer");
+    assertEquals(t.label.eventArgs, []);
+});
+
+Deno.test("event with args + guard + action: all parsed independently", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+    A --> B : coin_inserted(balance) [balance > 0] / log_change`));
+    const t = diagram.regions[0].stmts[0];
+    if (t.kind !== "transition") throw new Error("expected transition");
+    assertEquals(t.label.event, "coin_inserted");
+    assertEquals(t.label.eventArgs, ["balance"]);
+    assertEquals(t.label.guard, "balance > 0");
+    assertEquals(t.label.actions, ["log_change"]);
+});
+
+Deno.test("completion transition (no event): eventArgs is empty", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+    A --> B : / notify`));
+    const t = diagram.regions[0].stmts[0];
+    if (t.kind !== "transition") throw new Error("expected transition");
+    assertEquals(t.label.event, null);
+    assertEquals(t.label.eventArgs, []);
+});
+
 Deno.test("reports error line number for unrecognized statement", () => {
     const e = expectErr(parse(`stateDiagram-v2
     A --> B

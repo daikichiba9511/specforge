@@ -47,9 +47,10 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
 
 ### parser 拡張
 
-- [ ] **`event_name(arg)` の bare 名抽出**: 現状 mermaid に `coin_inserted(balance)` と書くと parser
-      は全文字列を event 名扱いし event 契約表 (`coin_inserted` で登録) とマッチしない。
-      `RE_TRANSITION` の event part を `name` と `args` に分割する。 ~50 LOC + tests
+- [x] **`event_name(arg)` の bare 名抽出**: parser が `name(arg1, arg2)` を分解して
+      `label.event = name` (bare) + `label.eventArgs = [...]` を AST に格納。 event 契約表との
+      lookup が `event(args)` 形式の Mermaid でも match するようになった。 vending-machine.md を
+      spec-behavior 規律準拠形 (`coin_inserted(balance)`) に書き換えても TLC verify pass
 - [ ] **`state "desc" as ID { ... }` の単一行 composite + alias**: 現状 alias と composite は
       別行宣言が必要。 Mermaid 公式は受理する。 RE_COMPOSITE / RE_ALIAS の正規表現に統合形を追加
 

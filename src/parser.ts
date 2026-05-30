@@ -29,6 +29,9 @@ const RE_STATE_DECL = /^state\s+(?<id>[A-Za-z_][A-Za-z0-9_]*)$/;
 const RE_TRANSITION =
     /^(?<from>\[\*\]|[A-Za-z_][A-Za-z0-9_]*)\s*-->\s*(?<to>\[\*\]|[A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*(?<label>.*))?$/;
 const RE_LABEL = /^(?<event>[^\[\/]*?)\s*(?:\[(?<guard>[^\]]+)\])?\s*(?:\/\s*(?<action>.+))?$/;
+// event 名 + 引数括弧の分解。 例: `coin_inserted(balance)` → name=coin_inserted、 args=balance
+// 引数なしの `timer` / `timer()` 両方を受理する。
+const RE_EVENT_NAME = /^(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?:\((?<args>[^)]*)\))?$/;
 
 const stripComment = (line: string): string => {
     const idx = line.indexOf("%%");
@@ -71,13 +74,30 @@ const splitActions = (raw: string): string[] => {
     return result;
 };
 
+// event 表記 `name(arg1, arg2)` または `name` から bare 名と引数列を取り出す。
+// 不正形式 (例: 括弧の対応が取れない、 識別子として無効) なら verbatim を name に入れ、 args は空。
+// 呼び出し側で「event === null」と区別するため、 入力が null/空のときは name=null を返す。
+const parseEventName = (raw: string | null): { name: string | null; args: string[] } => {
+    if (!raw) return { name: null, args: [] };
+    const m = RE_EVENT_NAME.exec(raw);
+    if (!m?.groups?.name) return { name: raw, args: [] };
+    const argsRaw = m.groups.args;
+    const args = argsRaw === undefined
+        ? []
+        : argsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+    return { name: m.groups.name, args };
+};
+
 const parseLabel = (raw: string): Label => {
     const trimmed = raw.trim();
-    if (!trimmed) return { event: null, guard: null, actions: [] };
+    if (!trimmed) return { event: null, eventArgs: [], guard: null, actions: [] };
     // RE_LABEL は trimmed が非空ならば必ず match する構造 (全 group が optional)。
     const groups = RE_LABEL.exec(trimmed)?.groups ?? {};
+    const eventRaw = groups.event?.trim() || null;
+    const { name, args } = parseEventName(eventRaw);
     return {
-        event: groups.event?.trim() || null,
+        event: name,
+        eventArgs: args,
         guard: groups.guard?.trim() ?? null,
         actions: splitActions(groups.action ?? ""),
     };

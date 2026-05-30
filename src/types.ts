@@ -24,7 +24,12 @@ export const isPseudoState = (s: string): s is PseudoState => s === PSEUDO_STATE
 /**
  * 遷移ラベル `event [guard] / action1, action2, ...` の構造化表現。
  *
- * - `event` / `guard` は省略可、不在は `null`。
+ * - `event` は bare 名のみ (引数括弧は剥がす)。 不在は `null`。 例: 入力
+ *   `coin_inserted(balance)` → `event = "coin_inserted"`、 `eventArgs = ["balance"]`
+ * - `eventArgs` は event の引数列。 `()` 無しなら `[]`。 引数表記は `name(arg1, arg2)`
+ *   の形を期待し、 トップレベル `,` で分割。 引数は payload field 名 (`spec-behavior` 規律) を
+ *   想定するが、 parser は意味解釈せずそのまま保持
+ * - `guard` は省略可、不在は `null`
  * - `actions` は 0 個以上のアクション列。トップレベル `,` で分割され、
  *   引数表記の括弧内 `,` は保持される (例: `write_task(item_id, count)` は 1 要素)。
  *   CSPm では `act1 -> act2 -> ...` の sequential prefix に展開される。
@@ -33,6 +38,7 @@ export const isPseudoState = (s: string): s is PseudoState => s === PSEUDO_STATE
  */
 export type Label = {
     event: string | null;
+    eventArgs: string[];
     guard: string | null;
     actions: string[];
 };
