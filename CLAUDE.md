@@ -1,162 +1,68 @@
 # specforge — Claude Context
 
-This file gives Claude the context needed to continue specforge development across sessions. Read it
-first when picking the project up.
+specforge 開発をセッション越しに継続するために Claude が最初に読む文脈。 詳細仕様 / 決定記録 /
+残タスクは別 doc に分離してあるのでここは要点のみ。
 
 ## What this tool does
 
-specforge translates **Mermaid `stateDiagram-v2` behavior specifications** into **formal
-verification targets** (TLA+ + TLC primary, CSPm + FDR4 secondary). The goal: make Mermaid-authored
-specs mechanically verifiable with model checkers like TLC / FDR4.
+specforge は **Mermaid `stateDiagram-v2` 振る舞い仕様** を **形式検証ターゲット** に変換する (TLA+ +
+TLC primary、 CSPm + FDR4 secondary)。 目的は Mermaid で書いた spec をモデルチェッカで
+機械的に検証可能にすること。
 
 **Pipeline**:
 
 ```
-Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)  →  deadlock-free / liveness check
+Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)   →  deadlock-free / liveness check
                                        ↘  CSPm (FDR4 input)  →  refinement / deadlock-free check
 ```
 
-The translator is intentionally strict about **what subset of Mermaid it accepts** — the subset is
-the one the `spec-behavior` skill teaches the user to write.
+入力サブセットは **`spec-behavior` skill が書く形** に厳密に限定する。 サブセット外は parse 時に
+拒絶。 詳細は [`docs/spec.md`](./docs/spec.md)。
 
 ## Why this exists
 
-The `spec-behavior` skill at `~/.claude/skills/spec-behavior/SKILL.md` guides the user to author
-behavior specs as Mermaid extended state machines. That skill already enforces a discipline that is
-almost CSP-translatable:
+`~/.claude/skills/spec-behavior/SKILL.md` が書く Mermaid 状態機械は既に CSP-translatable な
+規律を持つ (UML `event [guard] / action`、 関数形式 `name(arg1, arg2)`、 イベント契約表、 直交領域、
+冪等性 / 未定義イベント宣言など)。 specforge はそれを **機械的に TLA+ / CSPm に 変換する** 部品で、
+形式検証側を「ボタン一発」にする。 `specforge verify` で TLC まで一気通貫。
 
-- Transition labels follow UML convention `event [guard] / action`
-- Argument notation `name(arg1, arg2)` maps to CSP channel passing
-- Event contract tables specify sync/async (= CSP synchronization semantics)
-- Composite states with orthogonal regions map to CSP parallel composition
-- Per-channel ordering, idempotency rules, and undefined-event policies are already declared
+## Canonical docs
 
-specforge is the **mechanical translator** that turns those well-formed specs into TLA+ / CSPm, so
-the formal property check side becomes a button-press (`specforge verify` で TLC まで一気通貫)。
-
-## Canonical docs (read these before touching code)
-
-- **[`docs/spec.md`](./docs/spec.md)** — input language contract: accepted Mermaid subset, BNF,
-  transition label format, side artifacts, TLA+ + CSPm mapping semantics
-- **[`docs/behavior.md`](./docs/behavior.md)** — specforge's own runtime pipeline behavior, written
-  as a `spec-behavior`-style state machine. Doubles as the **dogfood target** (TLC verified
-  deadlock-free 済、 再現は `deno task verify docs/behavior.md`)
-- **[`docs/perf.md`](./docs/perf.md)** — bench (`deno task bench`) と before/after 比較
-  (`deno task bench:compare`)、CPU プロファイル取得手順、最適化を始める時の着目ポイント
-- **[`tasks/todo.md`](./tasks/todo.md)** — 残タスクの実作業リスト (優先度 / 規模付き)。 CLAUDE.md の
-  `Pending` セクションを展開した詳細版
-
-## The input language: `spec-behavior` subset
-
-specforge accepts a **subset of Mermaid stateDiagram-v2** matching what the `spec-behavior` skill
-produces. The canonical contract is documented in [`docs/spec.md`](./docs/spec.md) — read it before
-extending the parser or either codegen backend (TLA+ / CSPm).
-
-Quick overview of the supported core:
-
-- `stateDiagram-v2` header (required)
-- `state "description" as ID` aliases
-- `state ID { ... }` composite states
-- `--` orthogonal region separator (only valid inside composites)
-- `[*] --> X` initial transitions, `X --> [*]` final transitions
-- `X --> Y : event [guard] / action` transitions (event / guard / action all optional)
-- `%% ...` line comments
-
-**Anything else is rejected at parse time**. This is intentional: the goal is to keep the input
-strictly CSP-translatable, not to be a Mermaid clone. See `docs/spec.md` §6 for what specforge
-rejects and the recommended alternative encoding for each case.
-
-When the `spec-behavior` skill changes, both the parser and `docs/spec.md` may need to follow.
-**Cross-check against `~/.claude/skills/spec-behavior/SKILL.md` when adding features.**
-
-## Tech stack
-
-- **Runtime**: Deno 2.x (TypeScript native, `deno compile` for single-binary release)
-- **Zero third-party deps** in the parser / codegen core (hand-rolled to stay portable and stable)
-- **Test framework**: `deno test` + `jsr:@std/assert`
-- **Source is runtime-neutral** (`node:fs` / `node:process`) so it also runs on Bun / Node if needed
-  for dev iteration
-
-### Why not use the `mermaid` npm package as the parser?
-
-We tested this in the PoC session. The `mermaid` package can be used via JSDOM/happy-dom shim, but:
-
-- Pulls 425+ transitive deps just to get the AST
-- DOMPurify requires DOM globals (`window`, `document`) — hacky shim required
-- Mermaid's internal chunk structure is not a stable API; minor version bumps could break the
-  integration
-
-Hand-rolled parser is ~150 LOC, zero deps, can enforce the `spec-behavior` subset strictly. PoC was
-validated against a real spec at `~/job/docs/tasks/active/hitl-evaluation-system-phase-flow-spec.md`
-and against the spec-behavior examples.
-
-### Why Deno over Bun?
-
-Deno 2.x is more stable for a long-lived CLI tool (slower API evolution, fewer breaking changes).
-Bun is faster at cold start and has more momentum, but stability is a concern for tooling that's
-supposed to "just work" for years. Either runtime can run the source unchanged thanks to the `node:`
-prefix imports — Bun is fine for local dev iteration.
+- **[`docs/spec.md`](./docs/spec.md)** — 入力言語契約 (Mermaid サブセット / BNF / 遷移ラベル /
+  補助情報 / TLA+ + CSPm 変換セマンティクス)
+- **[`docs/behavior.md`](./docs/behavior.md)** — specforge 自身のランタイム振る舞い仕様
+  (`spec-behavior` 流の self-dogfood ターゲット、 TLC verified deadlock-free 済)
+- **[`docs/perf.md`](./docs/perf.md)** — bench (`deno task bench`) workflow / before-after 比較 /
+  CPU プロファイル取得手順
+- **[`docs/decisions.md`](./docs/decisions.md)** — 採用済の設計判断 (Deno 採用 / hand-roll parser /
+  TLA+ primary 等) + 未決の問題 (open design questions)
+- **[`tasks/todo.md`](./tasks/todo.md)** — 残タスク (Pri A/B/C, Size S/M/L) + 完了履歴サマリ +
+  「意図的にやらない」決定の記録
+- **[`examples/README.md`](./examples/README.md)** — 8 例 (正常 6 + 反例 2)
 
 ## Status snapshot
 
-**Done**:
+主要マイルストーンは完了済:
 
-- Parser (`src/parser.ts`) — header, aliases, composite, orthogonal regions, transitions, label
-  sub-parsing (event/guard/action chain), comments
-- CSPm generator (`src/cspm.ts`) — flat states, hierarchical composite (inline), orthogonal regions
-  (`|||`), completion transitions (`;`), triggered external transitions (`/\\`), action chain
-  (`a, b` → `a -> b`), guard dictionary substitution, event/action channel 宣言, payload event を
-  `?` 受信パターンに変換 (Phase 3), **プロセスパラメータ threading + Spec entry point** (Phase 4)
-- `.md` 入力対応 (`src/spec_doc.ts`) — Mermaid block 抽出 + `### ガード定義` 表をガード辞書化 +
-  `### 共有状態` 表から変数名抽出 + `### イベント契約` 表から event payload 抽出
-- **TLA+ generator (`src/tla.ts`)** — Phase A + B + 2: VARIABLES / Init / Next / Spec、各 transition
-  を context-aware (top / region / 入退場) で action 化。composite は `<comp>_r<N>` region 変数 +
-  `_inactive`/入口/`_done` 3 値で並列領域を track (Phase B)。event payload field と state var 名の
-  一致を `\E new_<var> \in Domain:` で非決定 bind して guard と次状態に thread (Phase 2)。 C
-  風演算子 (`==`/`!=`/`&&`/`||`) を TLA+ 流に自動変換
-- **`specforge verify` (`src/verify.ts`)** — spec → TLA+ → 一時ファイル →
-  `java -cp tla2tools.jar
-  tlc2.TLC` を subprocess 実行 → 結果サマリ。java と tla2tools.jar
-  の検出付き
-- **Validation pass (`src/validate.ts`)** — parse 後に V001 (guard 辞書漏れ) / V002 (guard 式の
-  未宣言変数) / V003 (composite region の `[*] -->` 入口欠落) / V004 (未到達 state) を warning
-  報告。`--strict` で warning → failure 昇格
-- CLI (`src/cli.ts`) — `.mmd` / `.md` 両対応、デフォルトは CSPm、`--tla` で TLA+、`--json` で AST +
-  metadata の JSON 出力、`--strict` で validation 厳格化、`--bound=N` で TLA+ Domain / CSPm VAL
-  の値域 (デフォルト 1) 上書き、`verify` サブコマンドで TLC 検証
-- Parser tests + cspm tests + tla tests + spec_doc tests + cli tests + verify tests + validate tests
-- Example specs (`examples/`) — 正常系 6 例 (`traffic-light.mmd` / `vending-machine.md` /
-  `db-connection-pool.md` / `producer-consumer.md` / `order-workflow.md` / `internal-events.md`) +
-  意図的に問題のある 2 例 (`deadlock.md` で TLC の deadlock 検出を実演、 `unreachable-state.md` で
-  V004 warning を実演) + `README.md` (一覧と使い分け)
-- CI workflow (`deno fmt --check`, `deno lint`, `deno check`, `deno test`)
-- Benches (`bench/*_bench.ts`) + before/after 比較 (`bench/compare.ts`) — `docs/perf.md`
-- **Self-dogfood 達成**: `deno task verify docs/behavior.md` で specforge 自身のパイプライン
-  (Reading → Parsing → Validating → Generating → Done/Failed) を TLC が deadlock-free と判定 (10
-  states / 6 distinct)。 spec-behavior skill → Mermaid + markdown tables → specforge → TLA+ → TLC
-  のチェーンが end-to-end で動くことを実証
+- Phase 1〜4 (CSPm full): composite / 完了遷移 / triggered / action chain / guard substitution /
+  payload binding / process parameter threading
+- TLA+ Phase A + B + 2: flat / composite + 直交領域 / event payload binding
+- `specforge verify` (TLC subprocess wrapper) + `--bound=N` で状態空間調整
+- Validation V001〜V004 + `--strict` flag、 `--json` output mode
+- self-dogfood 達成 (`docs/behavior.md` を TLC verified deadlock-free、 10 states / 6 distinct)
+- 8 examples (正常 6 + deadlock / unreachable 反例 2) + CI + bench
 
-**Pending (high-level、詳細は [`tasks/todo.md`](./tasks/todo.md))**:
-
-1. **Liveness / fairness 検証**: 現状 `assert Spec :[deadlock free]` 相当のみ。weak/strong fairness
-   仮定を `.cfg` に書く、`PROPERTY <>Terminated` 形の liveness check を生成する形で拡張可能。
-2. **Validation rules 拡張 (V005〜)**: 出口なし state 検出 / event payload 名と state var 名の fuzzy
-   ミスマッチ / 同一 (from, to, event, guard) 重複の警告 などを順次追加。
-3. **CSPm 側の磨き込み**: FDR4 で実機検証 (環境がある場合) もしくは `internal_*` の hiding 対応。
-   TLA+ + TLC が primary verifier なので CSPm は secondary。
-4. **Action update semantics (将来)**: action による state var 更新セマンティクス。AST 拡張 +
-   spec-behavior 側の規律拡張が必要。
+詳細は `git log` 参照。 残タスクは [`tasks/todo.md`](./tasks/todo.md)。
 
 ## How to develop
 
-### Apply these dotfiles-managed skills
+### Apply these skills
 
-- **`spec-behavior`** — for understanding/extending what input the parser accepts. When in doubt
-  about syntax, run review mode on a spec.
-- **`tdd`** — write tests first for new parser/cspm features. Existing tests are baseline only.
-- **`commit`** — for commits (conventional commits, Japanese OK).
-- **`code-review`** / **`simplify`** — before merging non-trivial changes.
-- **`plan`** — when adding a feature that touches multiple modules (e.g., state variable threading).
+- **`spec-behavior`** — 入力 spec を書く / review する時。 syntax で迷ったら review モードを当てる
+- **`tdd`** — parser / codegen の新機能はテスト先行 (既存テストは baseline)
+- **`commit`** — commit メッセージ (conventional commits、 日本語 OK)
+- **`code-review`** / **`simplify`** — non-trivial 変更を merge する前
+- **`plan`** — 複数モジュールに跨る機能を入れる前
 
 ### Useful commands
 
@@ -177,66 +83,29 @@ deno task bench      # run all benchmarks
 deno task bench:compare /tmp/before.json /tmp/after.json   # compare two `deno bench --json` runs
 ```
 
-パフォーマンス周りは `docs/perf.md` に詳細あり。
+パフォーマンス周りは [`docs/perf.md`](./docs/perf.md) に詳細。
 
 ### `verify` の前提
 
-- **Java**: `brew install openjdk` で OpenJDK が入る。verify は `/opt/homebrew/opt/openjdk/bin/java`
-  → `JAVA_HOME/bin/java` → `/usr/bin/java` の順で探す
+- **Java**: `brew install openjdk` で OpenJDK が入る。 verify は
+  `/opt/homebrew/opt/openjdk/bin/java` → `JAVA_HOME/bin/java` → `/usr/bin/java` の順で探す
 - **tla2tools.jar**: https://github.com/tlaplus/tlaplus/releases/latest から DL し
   `~/.local/share/specforge/tla2tools.jar` に配置 (もしくは `SPECFORGE_TLA_JAR` env var で上書き)
 - TLA+ module 名は `Spec` 固定 (一時ファイルが `Spec.tla` / `Spec.cfg`)
 
 ## Key references (in dotfiles / outside repo)
 
-- **`~/.claude/skills/spec-behavior/SKILL.md`** — the spec language definition specforge must follow
+- **`~/.claude/skills/spec-behavior/SKILL.md`** — specforge が受理する spec 言語の定義 (specforge は
+  これに追従する)
 - **`~/.claude/skills/spec-behavior/references/multi-entity-composition.md`** — multi-entity /
-  refinement / impl-separation patterns (will matter when extending to multi-state-machine specs)
+  refinement / impl 分離パターン (multi-state-machine specs に拡張する時に効く)
 - **Real-world example spec**: `~/job/docs/tasks/active/hitl-evaluation-system-phase-flow-spec.md` —
-  well-formed spec to test composite + orthogonal regions + multi-entity coverage against.
-  Confidential, but kept local.
-
-## Open design questions
-
-These were noted during the PoC and haven't been decided yet. A future session should resolve them
-as the relevant feature is implemented:
-
-- **at-least-once event semantics**: How to model in CSP? CSP is exactly-once synchronous. Options:
-  (a) trust the spec's idempotency declarations and ignore duplicates, (b) explicit duplicate
-  channel modeling. Lean toward (a) since spec-behavior already requires idempotency annotation.
-- **Action / event visibility in CSPm**: Events are CSP channels (clean). Actions like `log_skip` —
-  should they be visible CSP events (so trace properties can reference them) or hidden via
-  `\ {action_set}`? Probably visible by default, hideable via flag.
-- **Guard expressions**: spec-behavior keeps guards readable, but disciplines them to simple integer
-  comparisons. specforge currently emits guards verbatim, which can break FDR4 if the expression
-  uses unsupported syntax. Either (a) restrict guards to a sub-DSL the parser validates, or (b)
-  accept free text and surface unparseable guards as warnings.
-- **State naming collisions across composites**: Same state name in two composites — namespace them
-  by parent? Currently flat.
-
-## Conversation context (how we got here)
-
-This scaffold is the output of a session where:
-
-1. The `spec-behavior` skill in dotfiles was authored, reviewed, and iterated through multiple PRs.
-2. A real spec at `~/job/docs/tasks/active/hitl-evaluation-system-phase-flow-spec.md` was assessed
-   for CSP translatability — assessed as **unusually well-suited** because spec-behavior's
-   discipline already aligns with CSP semantics.
-3. PoC tried four runtime + library combinations:
-   - Deno + `npm:mermaid` (works with JSDOM shim, but heavy)
-   - Bun + `mermaid` (works with happy-dom shim, but same hack)
-   - Deno + hand-roll parser (clean, fast, zero deps)
-   - Bun + hand-roll parser (same source as Deno, runtime-portable)
-4. Decision: **hand-roll parser, Deno-primary**. Hand-roll avoids the DOM shim hack and the 425-dep
-   weight; Deno over Bun for tooling stability.
-5. Named `specforge` (forge formal verification targets from behavior specs).
+  composite + 直交領域 + multi-entity coverage の現実 spec (機密、 local 保持)
 
 ## Next session — recommended first step
 
-Before writing more code, **read `docs/spec.md`** to know what the parser/codegen must honor. The
-spec doc は正準入力契約、CLAUDE.md (this file) はその周辺プロジェクト文脈の wrapper。
+まず [`docs/spec.md`](./docs/spec.md) を読んで入力契約を把握する。 CLAUDE.md (本ファイル) は
+プロジェクト文脈の wrapper で、 spec.md が正準入力契約。
 
 具体的な残タスクは [`tasks/todo.md`](./tasks/todo.md) に Pri (A/B/C) + Size (S/M/L) 付きで
-列挙してある。再開時はそこを開いて「Pri A、Size S」から拾うのが手軽。 主要マイルストーン (Phase 1〜4
-/ TLA+ Phase A〜2 / `specforge verify` / validation V001〜V004 / self-dogfood / 8 examples /
-`--bound=N` / `--json` / `--strict`) は完了済み (上述 `Done` 節 + `git log` 参照)。
+列挙してある。 再開時は Pri A、 Size S から拾うのが手軽。

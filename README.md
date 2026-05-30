@@ -16,38 +16,46 @@ mermaid spec.md  →  AST + side tables  →  TLA+  →  TLC (deadlock-free / li
 
 ## Status
 
-Functional. Parser covers the `spec-behavior` Mermaid subset; both backends emit composite /
+Functional. The parser covers the `spec-behavior` Mermaid subset; both backends emit composite /
 orthogonal regions, event payload binding, guard substitution, and state variable threading.
-Validation pass V001〜V004 flags common spec mistakes (`--strict` で warning → failure 昇格)。
-specforge は **自身の `docs/behavior.md`** を TLC で deadlock-free と検証済 (self-dogfood)。
+Validation pass V001-V004 flags common spec mistakes (`--strict` promotes warnings to failures).
+specforge verifies its own `docs/behavior.md` via TLC (self-dogfood, deadlock-free).
 
-残タスクは [`tasks/todo.md`](./tasks/todo.md) に優先度 / 規模付きで列挙。
+Remaining work is enumerated in [`tasks/todo.md`](./tasks/todo.md) with priority and size
+annotations.
 
 ## Quickstart
 
 ```bash
 deno task test
-deno task cli examples/vending-machine.md               # CSPm 出力 (デフォルト)
-deno task cli --tla examples/vending-machine.md         # TLA+ 出力
-deno task verify --bound=3 examples/vending-machine.md  # TLC で deadlock-free 検証
+deno task cli examples/vending-machine.md               # CSPm output (default)
+deno task cli --tla examples/vending-machine.md         # TLA+ output
+deno task verify --bound=3 examples/vending-machine.md  # verify deadlock-freeness with TLC
 ```
 
-`verify` を使うには Java と `tla2tools.jar` のセットアップが必要 (詳細は [`CLAUDE.md`](./CLAUDE.md)
-`verify の前提` 節)。
+Running `verify` requires Java and `tla2tools.jar`; see the `verify の前提` section in
+[`CLAUDE.md`](./CLAUDE.md) for setup details.
+
+## Tech stack
+
+Deno 2.x runtime, TypeScript native, zero third-party dependencies in the parser / codegen core.
+Source is runtime-neutral (`node:` prefix imports) so it also runs on Bun / Node for dev iteration.
+Tests: `deno test` + `jsr:@std/assert`.
 
 ## Docs
 
-- [`docs/spec.md`](./docs/spec.md) — 入力言語契約 (Mermaid subset / BNF / 遷移ラベル / 補助情報 /
-  TLA+ + CSPm 変換セマンティクス)
-- [`docs/behavior.md`](./docs/behavior.md) — specforge 自身のランタイム振る舞い仕様 (`spec-behavior`
-  流に記述した self-dogfood ターゲット)
-- [`docs/perf.md`](./docs/perf.md) — bench (`deno task bench`) workflow, before/after 比較, CPU
-  プロファイル取得手順
-- [`examples/README.md`](./examples/README.md) — 8 例 (vending machine / DB pool / producer-consumer
-  / order workflow / internal events / deadlock / unreachable demos)
-- [`tasks/todo.md`](./tasks/todo.md) — 残タスク (Pri A/B/C, Size S/M/L 付き)
+- [`docs/spec.md`](./docs/spec.md) — input language contract (Mermaid subset / BNF / transition
+  label format / side artifacts / TLA+ + CSPm conversion semantics)
+- [`docs/behavior.md`](./docs/behavior.md) — specforge's own runtime behavior, written as a
+  `spec-behavior`-style state machine (self-dogfood verification target)
+- [`docs/perf.md`](./docs/perf.md) — bench (`deno task bench`) workflow, before/after comparison,
+  CPU profiling
+- [`docs/decisions.md`](./docs/decisions.md) — design decision records and open questions
+- [`examples/README.md`](./examples/README.md) — 8 worked examples (vending machine / DB pool /
+  producer-consumer / order workflow / internal events / deadlock / unreachable demos)
+- [`tasks/todo.md`](./tasks/todo.md) — remaining backlog with priority / size annotations
 
 ## Develop
 
-See [`CLAUDE.md`](./CLAUDE.md) for the development context, roadmap, and which dotfiles-managed
-skills to apply.
+See [`CLAUDE.md`](./CLAUDE.md) for the development context, recommended workflow skills, and useful
+commands.
