@@ -1,16 +1,18 @@
 # specforge 振る舞い仕様
 
-specforge **自身**の実行時パイプライン振る舞い (= ファイル受信 → parse → validate → CSPm 生成 →
-出力) を spec-behavior skill の規律で記述する。
+specforge **自身**の実行時パイプライン振る舞い (= ファイル受信 → parse → validate → 形式ターゲット
+(TLA+ / CSPm) 生成 → 出力) を spec-behavior skill の規律で記述する。
 
 本 doc は 2 つの役割を持つ:
 
 1. specforge の実装者が pipeline 全体像を把握するための contract
-2. **MVP 完成時の dogfood ケース**: 本 doc を specforge 自身に食わせて CSPm に変換し、FDR4 で
-   deadlock-free / 終端到達を検証する (turtles all the way down)
+2. **dogfood ケース (達成済)**: 本 doc を specforge 自身に食わせて TLA+ に変換し、TLC で
+   deadlock-free / 終端到達を検証する (turtles all the way down)。
+   `deno task verify
+   docs/behavior.md` で再現可能。 CSPm 側は FDR4 環境がある場合の追加検証用
 
-> 入力言語の契約 (Mermaid サブセット / BNF / CSPm 変換セマンティクス) は [`./spec.md`](./spec.md)
-> を参照。本 doc は specforge **runtime の挙動** だけを扱う。
+> 入力言語の契約 (Mermaid サブセット / BNF / TLA+ + CSPm 変換セマンティクス) は
+> [`./spec.md`](./spec.md) を参照。本 doc は specforge **runtime の挙動** だけを扱う。
 
 ---
 
@@ -21,7 +23,7 @@ stateDiagram-v2
     state "入力読み込み中" as Reading
     state "構文解析中" as Parsing
     state "意味検証中" as Validating
-    state "CSPm 生成中" as Generating
+    state "形式ターゲット生成中" as Generating
     state "正常終了" as Done
     state "障害終了" as Failed
 
@@ -45,26 +47,26 @@ stateDiagram-v2
 
 ### 状態一覧
 
-| 状態 ID      | 人間向け名     | 説明                                                                       |
-| ------------ | -------------- | -------------------------------------------------------------------------- |
-| `Reading`    | 入力読み込み中 | CLI 引数で指定された path のファイル内容を読み出す                         |
-| `Parsing`    | 構文解析中     | Mermaid stateDiagram-v2 として字句解析 + 構文解析、AST 化                  |
-| `Validating` | 意味検証中     | AST に対し ID 整合 / 状態変数参照 / イベント契約整合 などの semantic check |
-| `Generating` | CSPm 生成中    | AST から CSPm 文字列を組み立てる                                           |
-| `Done`       | 正常終了       | exit code 0、stdout に CSPm が出力済み                                     |
-| `Failed`     | 障害終了       | exit code non-zero、stderr に詳細エラー出力済み                            |
+| 状態 ID      | 人間向け名           | 説明                                                                       |
+| ------------ | -------------------- | -------------------------------------------------------------------------- |
+| `Reading`    | 入力読み込み中       | CLI 引数で指定された path のファイル内容を読み出す                         |
+| `Parsing`    | 構文解析中           | Mermaid stateDiagram-v2 として字句解析 + 構文解析、AST 化                  |
+| `Validating` | 意味検証中           | AST に対し ID 整合 / 状態変数参照 / イベント契約整合 などの semantic check |
+| `Generating` | 形式ターゲット生成中 | AST から TLA+ または CSPm 文字列を組み立てる                               |
+| `Done`       | 正常終了             | exit code 0、stdout に形式ターゲット (TLA+ / CSPm) が出力済み              |
+| `Failed`     | 障害終了             | exit code non-zero、stderr に詳細エラー出力済み                            |
 
 ### イベント一覧
 
-| イベント                                    | 発生元                 | 通信特性  | payload (ガード/分岐に使うフィールド)                             |
-| ------------------------------------------- | ---------------------- | --------- | ----------------------------------------------------------------- |
-| `file_loaded(text)`                         | `fs.readFileSync` 成功 | sync 内部 | `text`: 読み込んだ全文 (ガード未使用)                             |
-| `file_missing(error_type)`                  | `fs.readFileSync` 失敗 | sync 内部 | `error_type`: `ENOENT` / `EACCES` / 他 (ガード未使用)             |
-| `parse_done(ast)`                           | `Parser.parse`         | sync 内部 | `ast`: `Diagram` (ガード未使用)                                   |
-| `parse_failed(syntax_error)`                | `Parser.parse`         | sync 内部 | `syntax_error`: `ParseError` (ガード未使用)                       |
-| `validate_done(error_count, warning_count)` | `Validator`            | sync 内部 | `error_count`、`warning_count`: `no_errors` / `has_errors` で使用 |
-| `generate_done(cspm)`                       | `generateCspm`         | sync 内部 | `cspm`: 生成された CSPm 文字列 (ガード未使用)                     |
-| `generate_failed(error)`                    | `generateCspm`         | sync 内部 | `error`: 生成失敗の原因 (ガード未使用)                            |
+| イベント                                    | 発生元                         | 通信特性  | payload (ガード/分岐に使うフィールド)                                     |
+| ------------------------------------------- | ------------------------------ | --------- | ------------------------------------------------------------------------- |
+| `file_loaded(text)`                         | `fs.readFileSync` 成功         | sync 内部 | `text`: 読み込んだ全文 (ガード未使用)                                     |
+| `file_missing(error_type)`                  | `fs.readFileSync` 失敗         | sync 内部 | `error_type`: `ENOENT` / `EACCES` / 他 (ガード未使用)                     |
+| `parse_done(ast)`                           | `Parser.parse`                 | sync 内部 | `ast`: `Diagram` (ガード未使用)                                           |
+| `parse_failed(syntax_error)`                | `Parser.parse`                 | sync 内部 | `syntax_error`: `ParseError` (ガード未使用)                               |
+| `validate_done(error_count, warning_count)` | `Validator`                    | sync 内部 | `error_count`、`warning_count`: `no_errors` / `has_errors` で使用         |
+| `generate_done(cspm)`                       | `generateCspm` / `generateTla` | sync 内部 | `cspm`: 生成された形式ターゲット (TLA+ または CSPm) 文字列 (ガード未使用) |
+| `generate_failed(error)`                    | `generateCspm` / `generateTla` | sync 内部 | `error`: 生成失敗の原因 (ガード未使用)                                    |
 
 **通信特性の前提**: すべてのイベントは sync 内部 (同一プロセス内の関数呼び出し境界)
 で発火するため、配信保証や順序保証の概念は単一インスタンス内では自明
@@ -163,25 +165,30 @@ backend が `\E new_<var>` で非決定 bind するための state var として
 - **FDR4 invocation**: roadmap 上の将来課題。本 spec は CSPm 出力までで、検証実行は対象外 (別
   sub-command として `specforge verify` を追加する想定)。
 
-### CSPm 変換時の想定
+### 形式ターゲット変換時の想定
 
-本 doc を specforge 自身に食わせて CSPm に変換したときの期待形 (informative、`docs/spec.md` §7
-のセマンティクスに従う):
+本 doc を specforge 自身に食わせて TLA+ または CSPm に変換したときの期待形 (informative、
+`docs/spec.md` §7 のセマンティクスに従う):
 
-- **各状態 → CSPm プロセス**: `Reading`、`Parsing`、`Validating`、`Generating`、`Done`、`Failed`
-- **各イベント → channel**:
+- **各状態 → プロセス / phase 値**: `Reading`、`Parsing`、`Validating`、`Generating`、`Done`、
+  `Failed`。 CSPm では各状態が独立プロセス、TLA+ では `phase \in {"Reading", ...}` の単一変数。
+- **各イベント → channel / action**:
   `file_loaded`、`parse_done`、`validate_done`、`generate_done`、および対応する `*_failed` /
   `*_missing` 系
-- **状態変数なし**: pipeline は純粋に history-driven
-  (前段のどの状態を経由したかで現在状態が決まる)。プロセスパラメータは不要。
-- **`Failed` の集約**: CSPm でも単一の `Failed = report_xxx_error -> exit_nonzero -> SKIP`
-  プロセスにすべての `*_failed` 経路を絞り込む
+- **状態変数**: `validate_done(error_count, warning_count)` の payload を guard で参照するため
+  `error_count` / `warning_count` を state var として宣言 (詳細は「共有状態」表)。 TLA+ では
+  `\E new_error_count \in Domain:` で非決定的に bind されて `no_errors` / `has_errors` を判定。
+- **`Failed` の集約**: 単一の終端集約プロセス / phase にすべての `*_failed` 経路を絞り込む
 - **検証目標**:
   - **Deadlock-freeness**: `Done` / `Failed` 以外で進めない状態が生まれないこと
   - **Termination**: 任意の入力経路で必ず `Done` または `Failed` のいずれかの終端に到達すること
   - **Failure isolation**: `Failed` 状態に入った後、`exit_nonzero` 以外の経路で抜けないこと
   - **Mutual exclusivity of guards**: 同 event `validate_done` に対し `no_errors` ∧ `has_errors`
-    が同時成立しないこと (自明だが FDR4 で確認)
+    が同時成立しないこと (自明だが TLC / FDR4 で確認)
+
+実検証結果: `deno task verify docs/behavior.md` → `verified ok` (10 states / 6 distinct、
+deadlock-free)。 self-dogfood として spec-behavior → specforge → TLA+ → TLC のチェーンが end-to-end
+で動くことを実証する。
 
 ---
 

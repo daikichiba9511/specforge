@@ -2,8 +2,8 @@
 
 specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それを取り巻く補助情報 (イベント契約表
 / 設計メモ等) の契約を定める。dotfiles 管理下の `spec-behavior` skill
-が出力するスペックを正準入力として想定し、そこからの**機械的 CSPm
-変換**を成立させるための制約を明示する。
+が出力するスペックを正準入力として想定し、そこからの**機械的な TLA+ / CSPm
+変換**を成立させるための制約を明示する (TLA+ + TLC を primary、CSPm + FDR4 を secondary backend)。
 
 ---
 
@@ -11,8 +11,8 @@ specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それ�
 
 ### 1.1 目的
 
-- `spec-behavior` skill が write モードで出力する Mermaid spec を、人手介在なしで CSPm (FDR4 入力)
-  に変換できるようにする
+- `spec-behavior` skill が write モードで出力する Mermaid spec を、人手介在なしで TLA+ (TLC 入力)
+  または CSPm (FDR4 入力) に変換できるようにする
 - 受理可能な構文を**狭く厳密に**定義し、サブセット外のものを parse
   時に拒絶することで、変換の曖昧性を消す
 - skill 著者・spec 著者・ツール実装者の三者間で「何が動く保証があるか」の合意基準にする
@@ -21,7 +21,8 @@ specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それ�
 
 - Mermaid 全機能のサポート (notes / styles / click event 等は対象外)
 - 振る舞い仕様の編集環境提供 (spec-behavior skill の役割)
-- CSPm 以外の形式手法 (TLA+ 等) は roadmap 上の将来課題で本仕様には未含
+- TLA+ / CSPm への変換セマンティクスは §7 で informative にまとめる (両 backend サポート済)。
+  厳密な意味的等価性証明や時相論理プロパティの完全カタログ化は本仕様の対象外
 - spec の妥当性 (= 設計として正しいか) の検査 (これは spec-behavior の review モードの責務)
 
 ### 1.3 成否判定
@@ -29,7 +30,8 @@ specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それ�
 - `spec-behavior` SKILL.md 内の全 Mermaid サンプルが無修正で parse できる
 - `~/job/docs/tasks/active/hitl-evaluation-system-phase-flow-spec.md` 相当の現実スペックが parse
   できる
-- 変換結果が FDR4 で構文受理され、deadlock-free check が走る
+- 変換結果が **TLC** (TLA+) で構文受理され、deadlock-free check が走る (`specforge verify` で
+  end-to-end 実行可能)。 FDR4 (CSPm) も同様、環境があれば
 
 ---
 
@@ -305,15 +307,16 @@ spec-behavior の write モード Step 4 で出力される設計メモを継承
 
 ### 5.5 Validation pass の責務
 
-parse 後に走る別パス。**parser は構文のみ受理 / 拒絶**し、意味検査はこちら:
+parse 後に走る別パス。**parser は構文のみ受理 / 拒絶**し、意味検査はこちら。 実装は
+`src/validate.ts`。 各ルールは安定 ID (`V00x`) を持ち、`--strict` flag で warning → failure 昇格:
 
-- ID の宣言-参照整合 (transition で参照される ID が宣言されているか、warning レベル)
-- ガード式の tokenize と未知 ID 検出
-- イベント契約表との整合 (event 名が表にあるか)
-- 状態変数の参照整合 (ガード内の変数が §5.2 表にあるか)
-- アクションの冪等性が設計メモに記載されているか
+- **V001** — ガードタグが `### ガード定義` 表に登録されていない
+- **V002** — ガード式が state var / event payload のどちらにも無い識別子を参照
+- **V003** — composite region に `[*] --> <entry>` の初期遷移が無い
+- **V004** — state は宣言されているが、 どの transition の `to` にも現れない (= 未到達)
 
-実装 stub は `src/validate.ts` に予定 (現状未実装)。
+V005 以降は [`../tasks/todo.md`](../tasks/todo.md) を参照 (出口なし state、 fuzzy ミスマッチ、 重複
+transition 検出 など)。
 
 ---
 
@@ -563,6 +566,9 @@ Sampling(catalog_size) = sampling_done ->
 
 ## 10. 変更履歴
 
-- v0.1 (本ドキュメント初版): 受理サブセット定義、§3 EBNF、§4 ラベル構文、§5 補助情報、§6
-  拒絶要素、§7 CSPm 変換セマンティクス (informative)。implementation 状況は CLAUDE.md「Status
-  snapshot」を参照。
+- v0.1 (初版): 受理サブセット定義、§3 EBNF、§4 ラベル構文、§5 補助情報、§6 拒絶要素、§7 CSPm
+  変換セマンティクス (informative)。
+- v0.2: §7 を TLA+ 変換セマンティクス (Phase A + B + 2) に拡張。 §5.2 / §5.3 の表抽出と guard
+  辞書化を実装に揃えて記述。 §5.5 Validation pass を実装済 (V001〜V004) として展開。 §1.2 非目的
+  から「TLA+ は将来課題」を撤回 (実装済)。 §1.3 成否判定に TLC 受理を追記。 §4.4 internal_* の現状
+  (特別扱いしない) と将来の hiding 案を明記。 §5.1 末尾に `--bound=N` の効果を追記。

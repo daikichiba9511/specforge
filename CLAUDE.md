@@ -6,13 +6,14 @@ first when picking the project up.
 ## What this tool does
 
 specforge translates **Mermaid `stateDiagram-v2` behavior specifications** into **formal
-verification targets** (CSPm initially, TLA+ planned). The goal: make Mermaid-authored specs
-mechanically verifiable with model checkers like FDR4.
+verification targets** (TLA+ + TLC primary, CSPm + FDR4 secondary). The goal: make Mermaid-authored
+specs mechanically verifiable with model checkers like TLC / FDR4.
 
 **Pipeline**:
 
 ```
-Mermaid stateDiagram-v2  →  typed AST  →  CSPm (FDR4 input)  →  refinement / deadlock-free check
+Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)  →  deadlock-free / liveness check
+                                       ↘  CSPm (FDR4 input)  →  refinement / deadlock-free check
 ```
 
 The translator is intentionally strict about **what subset of Mermaid it accepts** — the subset is
@@ -30,17 +31,16 @@ almost CSP-translatable:
 - Composite states with orthogonal regions map to CSP parallel composition
 - Per-channel ordering, idempotency rules, and undefined-event policies are already declared
 
-specforge is the **mechanical translator** that turns those well-formed specs into CSPm, so the
-formal property check side becomes a button-press.
+specforge is the **mechanical translator** that turns those well-formed specs into TLA+ / CSPm, so
+the formal property check side becomes a button-press (`specforge verify` で TLC まで一気通貫)。
 
 ## Canonical docs (read these before touching code)
 
 - **[`docs/spec.md`](./docs/spec.md)** — input language contract: accepted Mermaid subset, BNF,
-  transition label format, side artifacts, CSPm mapping semantics
+  transition label format, side artifacts, TLA+ + CSPm mapping semantics
 - **[`docs/behavior.md`](./docs/behavior.md)** — specforge's own runtime pipeline behavior, written
-  as a `spec-behavior`-style state machine. Doubles as the **dogfood target**: feed this through
-  specforge itself once MVP is ready, run FDR4 on the output to verify deadlock-freeness and
-  termination
+  as a `spec-behavior`-style state machine. Doubles as the **dogfood target** (TLC verified
+  deadlock-free 済、 再現は `deno task verify docs/behavior.md`)
 - **[`docs/perf.md`](./docs/perf.md)** — bench (`deno task bench`) と before/after 比較
   (`deno task bench:compare`)、CPU プロファイル取得手順、最適化を始める時の着目ポイント
 - **[`tasks/todo.md`](./tasks/todo.md)** — 残タスクの実作業リスト (優先度 / 規模付き)。 CLAUDE.md の
@@ -50,7 +50,7 @@ formal property check side becomes a button-press.
 
 specforge accepts a **subset of Mermaid stateDiagram-v2** matching what the `spec-behavior` skill
 produces. The canonical contract is documented in [`docs/spec.md`](./docs/spec.md) — read it before
-extending the parser or CSPm generator.
+extending the parser or either codegen backend (TLA+ / CSPm).
 
 Quick overview of the supported core:
 
@@ -72,7 +72,7 @@ When the `spec-behavior` skill changes, both the parser and `docs/spec.md` may n
 ## Tech stack
 
 - **Runtime**: Deno 2.x (TypeScript native, `deno compile` for single-binary release)
-- **Zero third-party deps** in the parser/cspm core (hand-rolled to stay portable and stable)
+- **Zero third-party deps** in the parser / codegen core (hand-rolled to stay portable and stable)
 - **Test framework**: `deno test` + `jsr:@std/assert`
 - **Source is runtime-neutral** (`node:fs` / `node:process`) so it also runs on Bun / Node if needed
   for dev iteration
@@ -97,7 +97,7 @@ Bun is faster at cold start and has more momentum, but stability is a concern fo
 supposed to "just work" for years. Either runtime can run the source unchanged thanks to the `node:`
 prefix imports — Bun is fine for local dev iteration.
 
-## Status snapshot (at this scaffold)
+## Status snapshot
 
 **Done**:
 
@@ -136,14 +136,14 @@ prefix imports — Bun is fine for local dev iteration.
   states / 6 distinct)。 spec-behavior skill → Mermaid + markdown tables → specforge → TLA+ → TLC
   のチェーンが end-to-end で動くことを実証
 
-**Pending (next-session priorities, roughly in order)**:
+**Pending (high-level、詳細は [`tasks/todo.md`](./tasks/todo.md))**:
 
 1. **Liveness / fairness 検証**: 現状 `assert Spec :[deadlock free]` 相当のみ。weak/strong fairness
    仮定を `.cfg` に書く、`PROPERTY <>Terminated` 形の liveness check を生成する形で拡張可能。
-2. **Validation rules 拡張**: 未到達 state / 終端へ向かう経路が無い state / event payload 名と state
-   var 名のミスマッチ (V004 〜) を順次追加。
-3. **CSPm 側の磨き込み**: FDR4 で動かす場合のテスト (FDR4 を手動インストールしたら)、もしくは FDR4
-   を諦めて CSPm 出力を archive 化する選択。
+2. **Validation rules 拡張 (V005〜)**: 出口なし state 検出 / event payload 名と state var 名の fuzzy
+   ミスマッチ / 同一 (from, to, event, guard) 重複の警告 などを順次追加。
+3. **CSPm 側の磨き込み**: FDR4 で実機検証 (環境がある場合) もしくは `internal_*` の hiding 対応。
+   TLA+ + TLC が primary verifier なので CSPm は secondary。
 4. **Action update semantics (将来)**: action による state var 更新セマンティクス。AST 拡張 +
    spec-behavior 側の規律拡張が必要。
 
@@ -233,14 +233,10 @@ This scaffold is the output of a session where:
 
 ## Next session — recommended first step
 
-Before writing more code, **read `docs/spec.md`** to know what the parser/cspm must honor. The spec
-doc is the canonical contract; CLAUDE.md (this file) is the project context wrapper around it.
+Before writing more code, **read `docs/spec.md`** to know what the parser/codegen must honor. The
+spec doc は正準入力契約、CLAUDE.md (this file) はその周辺プロジェクト文脈の wrapper。
 
-Phase 1〜4 完了で生成 CSPm が構造的に valid な形になった。次の推奨順序:
-
-1. **FDR4 invocation**: 生成した CSPm を実機 fdr4 で流して deadlock-free check を走らせる。 syntax
-   error / 未定義シンボル等が出れば Validation pass の警告対象を具体化できる。
-2. **Validation pass**: ガード辞書漏れ、未宣言変数、payload field と state var の不整合等を parse
-   後に warning 報告。
-3. **Self-dogfood**: `docs/behavior.md` の状態機械を specforge で変換 → fdr4 で検証。 spec-behavior
-   → specforge → FDR4 チェーンが end-to-end で動くことの実証。
+具体的な残タスクは [`tasks/todo.md`](./tasks/todo.md) に Pri (A/B/C) + Size (S/M/L) 付きで
+列挙してある。再開時はそこを開いて「Pri A、Size S」から拾うのが手軽。 主要マイルストーン (Phase 1〜4
+/ TLA+ Phase A〜2 / `specforge verify` / validation V001〜V004 / self-dogfood / 8 examples /
+`--bound=N` / `--json` / `--strict`) は完了済み (上述 `Done` 節 + `git log` 参照)。

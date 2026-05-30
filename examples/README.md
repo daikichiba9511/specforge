@@ -1,8 +1,9 @@
 # specforge examples
 
-`spec-behavior` skill の規律に従って書かれた振る舞い仕様サンプル。各ファイルは
-`deno task verify --bound=N` で TLC に流して deadlock-free check 済み。 specforge の機能を
-段階的にカバーする 4 例 + 既存の最小例。
+`spec-behavior` skill の規律に従って書かれた振る舞い仕様サンプル。 specforge の機能を
+段階的にカバーする 6 正常例 + 意図的に問題のある 2 反例 = 計 8 例。 正常例は
+`deno task verify --bound=N` で TLC に流して deadlock-free check 済み、 反例は specforge / TLC
+の検出機能 (V004 警告 / deadlock 検出) を実演する。
 
 ## 例の一覧
 
