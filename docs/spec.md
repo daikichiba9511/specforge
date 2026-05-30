@@ -316,9 +316,11 @@ parse 後に走る別パス。**parser は構文のみ受理 / 拒絶**し、意
 - **V004** — state は宣言されているが、 どの transition の `to` にも現れない (= 未到達)
 - **V005** — state は到達可能だが、 どの transition の `from` にも現れない (= 出口なし、 stuck
   可能性)。 V004 と排他
+- **V007** — 同一 `(from, to, event, guard)` の tuple が複数 transition に出現 (action だけ違う、
+  完全重複 等)
 
-V006 以降は [`../tasks/todo.md`](../tasks/todo.md) を参照 (fuzzy ミスマッチ、 重複 transition 検出
-など)。
+V006 (event payload と state var の fuzzy ミスマッチ) は [`../tasks/todo.md`](../tasks/todo.md)
+参照。
 
 ---
 

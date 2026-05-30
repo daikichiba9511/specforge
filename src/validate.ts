@@ -93,6 +93,8 @@ const regionHasEntry = (region: Region): boolean => {
  * - **V004**: state が宣言されているが、 どの transition の `to` にも現れない (= 未到達)
  * - **V005**: state は到達可能だが、 どの transition の `from` にも現れない (= 出口なし、 stuck
  *   する可能性)。 V004 と排他: 未到達状態は V004 のみ、 到達可能 + 出口なしは V005 のみ
+ * - **V007**: 同一 `(from, to, event, guard)` の tuple が複数 transition に出現 (action だけ違う、
+ *   完全重複等)。 ガード競合 / 重複定義 の可能性
  *
  * 各 issue は `level: "warning"` で返す。CLI 側 `--strict` で warning → 失敗に昇格させる。
  *
@@ -189,6 +191,29 @@ export const validate = (diagram: Diagram, doc: SpecDoc): ValidationReport => {
                     `or remove the declaration if intentional.`,
             });
         }
+    }
+
+    // V007: 同一 (from, to, event, guard) tuple の重複
+    const groups = new Map<string, Transition[]>();
+    for (const t of transitions) {
+        const key = [t.from, t.to, t.label.event ?? "", t.label.guard ?? ""].join("|");
+        const list = groups.get(key);
+        if (list) list.push(t);
+        else groups.set(key, [t]);
+    }
+    for (const list of groups.values()) {
+        if (list.length <= 1) continue;
+        const t = list[0];
+        const eventStr = t.label.event ? ` : ${t.label.event}` : "";
+        const guardStr = t.label.guard ? ` [${t.label.guard}]` : "";
+        issues.push({
+            level: "warning",
+            code: "V007",
+            message: `${list.length} transitions share the same (from, to, event, guard) ` +
+                `tuple: '${t.from} --> ${t.to}${eventStr}${guardStr}'`,
+            suggestion: `Distinguish them with different guards / events, or remove ` +
+                `the duplicates if redundant.`,
+        });
     }
 
     return { issues };

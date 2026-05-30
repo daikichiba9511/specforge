@@ -20,8 +20,8 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
       出口無しなら V005)
 - [ ] **V006**: event payload field の名前が state var とミスマッチ警告。 「state var に似てる けど
       1 文字違い」を Levenshtein でなく簡易な fuzzy match で。 開発中のリネームミス検出用
-- [ ] **V007**: 同一 (from, to, event, guard) 組合せが複数 transition 出現 → warning。 hitl
-      の中でも実害ありそうな pattern
+- [x] **V007**: 同一 (from, to, event, guard) tuple の重複 transition を warning。 action だけ 違う
+      / ガード競合 / 完全コピペミス を静的に検出
 - [ ] validation rule の登録機構をデータ駆動化 (現状は `validate()` 内 手書き分岐)。 ルールが 10
       個超えると保守性厳しくなるので
 
@@ -109,7 +109,7 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
       substitution / state var declarations / payload binding / process parameter threading
 - [x] TLA+ backend (Phase A + B + 2): flat / composite / 直交領域 / payload binding
 - [x] `specforge verify` (TLC subprocess wrapper) + `--bound=N` で 状態空間調整
-- [x] Validation pass V001〜V005 + `--strict` flag
+- [x] Validation pass V001〜V005, V007 + `--strict` flag
 - [x] `--json` output mode
 - [x] Self-dogfood: `docs/behavior.md` 自身を TLC で verified ok
 - [x] examples 8 例: traffic-light / vending-machine / db-connection-pool / producer-consumer /

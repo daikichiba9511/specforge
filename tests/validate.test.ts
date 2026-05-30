@@ -218,6 +218,44 @@ Done --> [*]`);
     assertStringIncludes(v005[0].message, "Stuck");
 });
 
+Deno.test("V007: identical transitions (action only differs) → warning", () => {
+    const report = validateOf(`stateDiagram-v2
+A --> B : ev / action1
+A --> B : ev / action2
+B --> [*]`);
+    const v007 = report.issues.filter((i) => i.code === "V007");
+    assertEquals(v007.length, 1);
+    assertStringIncludes(v007[0].message, "A --> B");
+    assertStringIncludes(v007[0].message, ": ev");
+});
+
+Deno.test("V007: same event with different guards → no warning", () => {
+    const report = validateOf(`stateDiagram-v2
+A --> B : ev [g1]
+A --> B : ev [g2]
+B --> [*]`);
+    assertEquals(report.issues.filter((i) => i.code === "V007").length, 0);
+});
+
+Deno.test("V007: different events → no warning", () => {
+    const report = validateOf(`stateDiagram-v2
+A --> B : ev1
+A --> B : ev2
+B --> [*]`);
+    assertEquals(report.issues.filter((i) => i.code === "V007").length, 0);
+});
+
+Deno.test("V007: completely identical 3 transitions → warning mentions count", () => {
+    const report = validateOf(`stateDiagram-v2
+A --> B : ev [g]
+A --> B : ev [g]
+A --> B : ev [g]
+B --> [*]`);
+    const v007 = report.issues.filter((i) => i.code === "V007");
+    assertEquals(v007.length, 1);
+    assertStringIncludes(v007[0].message, "3 transitions");
+});
+
 Deno.test("clean spec produces no issues", () => {
     const report = validateOf(
         `stateDiagram-v2
