@@ -132,6 +132,7 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
             doc.eventPayloads,
             "Spec",
             bound,
+            doc.liveness,
         );
     } else {
         stdout = generateCspm(

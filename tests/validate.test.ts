@@ -9,6 +9,7 @@ const mkDoc = (overrides: Partial<SpecDoc> = {}): SpecDoc => ({
     guards: new Map(),
     stateVars: [],
     eventPayloads: new Map(),
+    liveness: [],
     ...overrides,
 });
 

@@ -39,11 +39,15 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
 
 ### Liveness / fairness 検証
 
-- [ ] **liveness check の自動 emit**: 現状 `assert Spec :[deadlock free]` 相当のみ。 `<>Terminated`
-      (termination) や custom invariant を `.cfg` に書き出せるように
-- [ ] **fairness 仮定**: weak / strong fairness を action 毎に `.cfg` で指定可能に。 spec 内
-      `### fairness` 表で declarative に書ける形を検討
-- [ ] **counterexample の整形**: 現状 TLC の生 stdout を流すだけ。 path を読みやすく整形
+- [x] **liveness check の自動 emit**: `### Liveness` 表で時相プロパティを宣言すると TLA+ 出力に
+      `Terminated == phase \in TerminalStates` + 各 property 定義が emit され、 `.cfg` に
+      `PROPERTY <name>` 行が入る。 1 件以上宣言で **`Fairness == WF_vars(Next)` 自動付加** +
+      `Spec == Init /\ [][Next]_vars /\ Fairness`。 docs/behavior.md で end-to-end 検証済
+- [ ] **fairness 種別の override**: 現状は WF on Next 一律。 `### Fairness` 表で action 毎に WF/SF
+      を指定 / 一部 action のみ fairness 仮定する形を検討。 多くの spec では WF on Next で
+      足りるはずなので優先度は低い
+- [ ] **counterexample の整形**: 現状 TLC の生 stdout を流すだけ。 liveness 失敗時の trace は
+      もっと厳しいので、 path を読みやすく整形
 
 ### parser 拡張
 

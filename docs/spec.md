@@ -309,6 +309,32 @@ spec-behavior の write モード Step 4 で出力される設計メモを継承
 - **共有状態の排他制御**: 単一書き込み元 / lock / CAS 等
 - **既知の未対応ケース**: 意図的に省いた組合せ (検証時の expected gap)
 
+### 5.4.1 Liveness 表 (時相プロパティ、 任意)
+
+`### Liveness` (もしくは `Temporal property` / `進行性` を含む見出し) の直後の markdown 表で、 TLA+
+/ TLC に検証させたい時相プロパティを宣言できる。 表が無い (= safety only) spec は従来通り
+deadlock-free check のみで、 後方互換。
+
+形式 (例):
+
+```markdown
+### Liveness
+
+| プロパティ名 | 式             |
+| ------------ | -------------- |
+| Termination  | `<>Terminated` |
+```
+
+- 1 列目: TLA+ MODULE 内の定義名 (英数 + `_`)
+- 2 列目: TLA+ 時相論理式。 `<>P` (eventually)、 `[]<>P` (infinitely often) など
+- specforge は terminal state がある場合に `Terminated == phase \in TerminalStates` を自動定義
+  するので、 termination check は `<>Terminated` と書ける
+- 1 件以上宣言された場合、 TLA+ 出力に **`Fairness == WF_vars(Next)` が自動付加**され、
+  `Spec == Init /\ [][Next]_vars /\ Fairness` に拡張される。 `.cfg` には
+  `PROPERTY <name1> <name2>
+  ...` 行が emit され、 TLC が検証する
+- Fairness 種別 (WF / SF) の override は将来課題 (`### Fairness` 表で declarative に書く案)
+
 ### 5.5 Validation pass の責務
 
 parse 後に走る別パス。**parser は構文のみ受理 / 拒絶**し、意味検査はこちら。 実装は

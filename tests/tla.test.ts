@@ -309,3 +309,59 @@ A --> B : ev`));
     );
     assertStringIncludes(out, "Domain == 0..5");
 });
+
+Deno.test("Liveness: empty list → no Fairness / Property, Spec stays safety-only", () => {
+    const out = tlaOf(`stateDiagram-v2
+[*] --> A
+A --> [*]`);
+    assertEquals(out.includes("Fairness =="), false);
+    assertEquals(out.includes("WF_vars"), false);
+    assertStringIncludes(out, "Spec == Init /\\ [][Next]_vars");
+});
+
+Deno.test("Liveness: single property emits Fairness + property def + Spec conjunction", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+[*] --> A
+A --> [*]`));
+    const out = generateTla(
+        diagram,
+        new Map(),
+        [],
+        new Map(),
+        "Spec",
+        1,
+        [{ name: "Termination", formula: "<>Terminated" }],
+    );
+    assertStringIncludes(out, "Terminated == phase \\in TerminalStates");
+    assertStringIncludes(out, "Fairness == WF_vars(Next)");
+    assertStringIncludes(out, "Spec == Init /\\ [][Next]_vars /\\ Fairness");
+    assertStringIncludes(out, "Termination == <>Terminated");
+});
+
+Deno.test("Liveness: multiple properties each get their own definition", () => {
+    const diagram = expectOk(parse(`stateDiagram-v2
+[*] --> A
+A --> [*]`));
+    const out = generateTla(
+        diagram,
+        new Map(),
+        [],
+        new Map(),
+        "Spec",
+        1,
+        [
+            { name: "Termination", formula: "<>Terminated" },
+            { name: "EventuallyDone", formula: `<>(phase = "Done")` },
+        ],
+    );
+    assertStringIncludes(out, "Termination == <>Terminated");
+    assertStringIncludes(out, `EventuallyDone == <>(phase = "Done")`);
+});
+
+Deno.test("Stutter uses Terminated predicate (refactored from inline)", () => {
+    const out = tlaOf(`stateDiagram-v2
+[*] --> A
+A --> [*]`);
+    assertStringIncludes(out, "Terminated == phase \\in TerminalStates");
+    assertStringIncludes(out, "/\\ Terminated");
+});

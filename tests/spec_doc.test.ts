@@ -2,6 +2,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import {
     extractEventPayloads,
     extractGuards,
+    extractLiveness,
     extractMermaid,
     extractStateVars,
     preprocess,
@@ -264,4 +265,49 @@ Deno.test("preprocess: falls back to raw input when no mermaid fence", () => {
     assertEquals(result.guards.size, 0);
     assertEquals(result.stateVars, []);
     assertEquals(result.eventPayloads.size, 0);
+    assertEquals(result.liveness, []);
+});
+
+Deno.test("extractLiveness: returns empty array when no liveness heading", () => {
+    assertEquals(extractLiveness("# Title\nbody only\n"), []);
+});
+
+Deno.test("extractLiveness: parses Japanese heading + backticked formula", () => {
+    const md = `### Liveness
+
+| name | formula |
+| --- | --- |
+| \`Termination\` | \`<>Terminated\` |
+`;
+    const props = extractLiveness(md);
+    assertEquals(props.length, 1);
+    assertEquals(props[0].name, "Termination");
+    assertEquals(props[0].formula, "<>Terminated");
+});
+
+Deno.test("extractLiveness: matches 進行性 heading", () => {
+    const md = `### 進行性
+
+| プロパティ | 式 |
+| --- | --- |
+| Termination | \`<>Terminated\` |
+`;
+    const props = extractLiveness(md);
+    assertEquals(props.length, 1);
+    assertEquals(props[0].formula, "<>Terminated");
+});
+
+Deno.test("extractLiveness: multiple properties from one table", () => {
+    const md = `## Temporal properties
+
+| name | formula |
+| --- | --- |
+| \`Termination\` | \`<>Terminated\` |
+| \`EventuallyDone\` | \`<>(phase = "Done")\` |
+`;
+    const props = extractLiveness(md);
+    assertEquals(props.length, 2);
+    assertEquals(props[0].name, "Termination");
+    assertEquals(props[1].name, "EventuallyDone");
+    assertEquals(props[1].formula, `<>(phase = "Done")`);
 });

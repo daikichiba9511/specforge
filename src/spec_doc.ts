@@ -11,6 +11,16 @@
  */
 
 /**
+ * spec の `### Liveness` 表で宣言する時相プロパティ。 例: `{name: "Termination", formula:
+ * "<>Terminated"}`。 TLA+ 出力では `<name> == <formula>` の定義になり、 `.cfg` の `PROPERTY` で
+ * 参照される。 1 件以上ある spec には自動で `Fairness == WF_vars(Next)` が付加される。
+ */
+export type LivenessProp = {
+    name: string;
+    formula: string;
+};
+
+/**
  * `.md` 前処理の結果。
  *
  * - `mermaid`: AST パーサに渡す Mermaid 文字列
@@ -21,12 +31,15 @@
  *   `sampling_done -> ["batch_id", "catalog_size"]` のような対応。cspm 生成時に
  *   channel 型 (`channel sampling_done : Nat.Nat`) と受信パターン (`?batch_id.catalog_size`)
  *   に展開される。
+ * - `liveness`: `### Liveness` 表から抽出した時相プロパティ列。 空なら safety only、
+ *   1 件以上あれば TLA+ 出力に Property 定義 + WF 公平性 + .cfg の PROPERTY 行が emit される。
  */
 export type SpecDoc = {
     mermaid: string;
     guards: Map<string, string>;
     stateVars: string[];
     eventPayloads: Map<string, string[]>;
+    liveness: LivenessProp[];
 };
 
 const RE_MERMAID_OPEN = /^```mermaid\b/;
@@ -43,6 +56,9 @@ const RE_STATE_VAR_HEADING =
 // 「イベント」「Event」だけだと誤マッチ多いので、続く語で具体性を絞る。
 const RE_EVENT_HEADING =
     /^#{1,6}\s+.*(?:イベント(?:契約|一覧|定義)|Event\s*(?:Contracts?|Lists?|Definitions?)\b)/i;
+// Liveness / 進行性 / Temporal property を含む見出し。
+const RE_LIVENESS_HEADING =
+    /^#{1,6}\s+.*(?:Liveness\b|進行性|時相プロパティ|Temporal\s*Propert(?:y|ies)\b)/i;
 // payload セル中の `{a, b, c}` 部分を抽出 (周囲のコメント等は無視)。
 const RE_PAYLOAD_BRACES = /\{([^}]*)\}/;
 
@@ -207,6 +223,44 @@ const parsePayloadCell = (cell: string): string[] => {
 };
 
 /**
+ * `### Liveness` (もしくは `Temporal property` / `進行性` 等を含む見出し) の直後の markdown
+ * 表から時相プロパティを抽出する。
+ *
+ * 受理形式:
+ * - 見出し行: 任意レベル `#` + 本文に "Liveness" / "進行性" / "Temporal property" / "時相プロパティ"
+ * - 表の 1 列目 = プロパティ名、2 列目 = TLA+ 式 (backtick 任意)
+ * - 名前は識別子として TLA+ 出力に直書きされるので英数 + `_` 推奨
+ *
+ * 表が見つからない / 空なら空配列。 生成側はこの場合 fairness / property は emit しない。
+ */
+export const extractLiveness = (input: string): LivenessProp[] => {
+    const props: LivenessProp[] = [];
+    const lines = input.split("\n");
+
+    let i = 0;
+    while (i < lines.length && !RE_LIVENESS_HEADING.test(lines[i])) i++;
+    if (i >= lines.length) return props;
+
+    i++;
+    while (i < lines.length && !RE_TABLE_ROW.test(lines[i])) i++;
+    if (i >= lines.length) return props;
+
+    i++; // header row
+    if (i < lines.length && RE_TABLE_SEPARATOR.test(lines[i])) i++;
+
+    while (i < lines.length && RE_TABLE_ROW.test(lines[i])) {
+        const cells = parseTableRow(lines[i]);
+        if (cells.length >= 2) {
+            const name = stripBackticks(cells[0]);
+            const formula = stripBackticks(cells[1]);
+            if (name && formula) props.push({ name, formula });
+        }
+        i++;
+    }
+    return props;
+};
+
+/**
  * `.md` / `.mmd` どちらの入力でも適切に前処理した {@link SpecDoc} を返す。
  * Mermaid block が見つからない場合は入力そのものを Mermaid として扱う (= 生 `.mmd`)。
  */
@@ -218,6 +272,7 @@ export const preprocess = (input: string): SpecDoc => {
             guards: new Map(),
             stateVars: [],
             eventPayloads: new Map(),
+            liveness: [],
         };
     }
     return {
@@ -225,5 +280,6 @@ export const preprocess = (input: string): SpecDoc => {
         guards: extractGuards(input),
         stateVars: extractStateVars(input),
         eventPayloads: extractEventPayloads(input),
+        liveness: extractLiveness(input),
     };
 };

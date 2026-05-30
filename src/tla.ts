@@ -1,5 +1,6 @@
 import { isPseudoState } from "./types.ts";
 import type { Diagram, Region, Stmt } from "./types.ts";
+import type { LivenessProp } from "./spec_doc.ts";
 
 type Transition = Extract<Stmt, { kind: "transition" }>;
 type Composite = Extract<Stmt, { kind: "composite" }>;
@@ -327,6 +328,9 @@ const hasAnyPayloadBinding = (analysis: Analysis, ctx: EmitContext): boolean => 
  * @param moduleName    - MODULE 名 (省略時 "Spec")
  * @param bound         - `Domain == 0..bound` の N。大きいほど state var が取りうる値が増えて
  *                        TLC が探索する状態空間も増える。省略時 1 (最小: {0, 1})
+ * @param liveness      - `### Liveness` 表の時相プロパティ列。 1 件以上ある場合は
+ *                        `Fairness == WF_vars(Next)` と各 property 定義が emit される。
+ *                        省略時 空 (safety のみ、 fairness 無し)
  */
 export const generateTla = (
     diagram: Diagram,
@@ -335,6 +339,7 @@ export const generateTla = (
     eventPayloads: Map<string, string[]> = new Map(),
     moduleName: string = "Spec",
     bound: number = 1,
+    liveness: LivenessProp[] = [],
 ): string => {
     const analysis = analyze(diagram);
     const initialState = findInitialState(diagram);
@@ -451,8 +456,10 @@ export const generateTla = (
     }
 
     if (terminal.size > 0) {
+        lines.push(`Terminated == phase \\in TerminalStates`);
+        lines.push("");
         lines.push(`Stutter ==`);
-        lines.push(`    /\\ phase \\in TerminalStates`);
+        lines.push(`    /\\ Terminated`);
         lines.push(`    /\\ UNCHANGED vars`);
         lines.push("");
     }
@@ -469,15 +476,25 @@ export const generateTla = (
     }
     lines.push("");
 
-    lines.push(`Spec == Init /\\ [][Next]_vars`);
-    lines.push("");
-
-    lines.push(`\\* Properties — enable in .cfg to check:`);
-    lines.push(`\\* INVARIANT: phase \\in States`);
-    if (terminal.size > 0) {
-        lines.push(`\\* PROPERTY:  <>(phase \\in TerminalStates)  \\* termination`);
+    if (liveness.length > 0) {
+        lines.push(`Fairness == WF_vars(Next)`);
+        lines.push("");
+        lines.push(`Spec == Init /\\ [][Next]_vars /\\ Fairness`);
+        lines.push("");
+        for (const prop of liveness) {
+            lines.push(`${prop.name} == ${prop.formula}`);
+        }
+        lines.push("");
+    } else {
+        lines.push(`Spec == Init /\\ [][Next]_vars`);
+        lines.push("");
+        lines.push(`\\* Properties — enable in .cfg to check:`);
+        lines.push(`\\* INVARIANT: phase \\in States`);
+        if (terminal.size > 0) {
+            lines.push(`\\* PROPERTY:  <>Terminated  \\* termination`);
+        }
+        lines.push("");
     }
-    lines.push("");
 
     lines.push(`====`);
     return lines.join("\n");

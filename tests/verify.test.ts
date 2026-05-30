@@ -93,3 +93,57 @@ Deno.test("verify: writes Spec.tla and Spec.cfg to temp dir", () => {
     const cfgEntry = written.find(([p]) => p.endsWith("Spec.cfg"));
     if (cfgEntry) assertStringIncludes(cfgEntry[1], "SPECIFICATION Spec");
 });
+
+const SPEC_WITH_LIVENESS = `# Spec
+
+\`\`\`mermaid
+stateDiagram-v2
+[*] --> A
+A --> [*]
+\`\`\`
+
+### Liveness
+
+| name | formula |
+| --- | --- |
+| \`Termination\` | \`<>Terminated\` |
+`;
+
+Deno.test("verify: cfg includes PROPERTY when liveness declared", () => {
+    const written: Array<[string, string]> = [];
+    verify(
+        "spec.md",
+        mkDeps({
+            readFile: () => SPEC_WITH_LIVENESS,
+            writeFile: (path, content) => written.push([path, content]),
+        }),
+    );
+    const cfgEntry = written.find(([p]) => p.endsWith("Spec.cfg"));
+    if (!cfgEntry) throw new Error("Spec.cfg not written");
+    assertStringIncludes(cfgEntry[1], "SPECIFICATION Spec");
+    assertStringIncludes(cfgEntry[1], "PROPERTY Termination");
+});
+
+Deno.test("verify: TLA+ includes Fairness + Termination def when liveness declared", () => {
+    const written: Array<[string, string]> = [];
+    verify(
+        "spec.md",
+        mkDeps({
+            readFile: () => SPEC_WITH_LIVENESS,
+            writeFile: (path, content) => written.push([path, content]),
+        }),
+    );
+    const tlaEntry = written.find(([p]) => p.endsWith("Spec.tla"));
+    if (!tlaEntry) throw new Error("Spec.tla not written");
+    assertStringIncludes(tlaEntry[1], "Fairness == WF_vars(Next)");
+    assertStringIncludes(tlaEntry[1], "Termination == <>Terminated");
+});
+
+Deno.test("verify: cfg has no PROPERTY when no liveness declared", () => {
+    const written: Array<[string, string]> = [];
+    verify("spec.mmd", mkDeps({ writeFile: (path, content) => written.push([path, content]) }));
+    const cfgEntry = written.find(([p]) => p.endsWith("Spec.cfg"));
+    if (!cfgEntry) throw new Error("Spec.cfg not written");
+    assertStringIncludes(cfgEntry[1], "SPECIFICATION Spec");
+    assertEquals(cfgEntry[1].includes("PROPERTY"), false);
+});

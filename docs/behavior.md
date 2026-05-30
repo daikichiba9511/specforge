@@ -109,6 +109,16 @@ backend が `\E new_<var>` で非決定 bind するための state var として
 | `error_count`   | int (>=0) | Validator | `Validating` 遷移時の `no_errors`/`has_errors`  |
 | `warning_count` | int (>=0) | Validator | (現状ガード未使用、`--strict` モードで使用予定) |
 
+### Liveness
+
+specforge pipeline は CLI 1 実行が必ず `Done` か `Failed` のいずれかに到達することを進行性
+プロパティとして宣言する。 specforge は本表を読み取り TLA+ 出力に `WF_vars(Next)` 公平性を
+付加した上で TLC に `<>Terminated` を検証させる (`PROPERTY Termination` in `.cfg`)。
+
+| プロパティ名  | 式             | 意味                                        |
+| ------------- | -------------- | ------------------------------------------- |
+| `Termination` | `<>Terminated` | 全 behavior が最終的に `Done`/`Failed` 到達 |
+
 ---
 
 ## 設計メモ

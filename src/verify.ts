@@ -123,7 +123,17 @@ export type VerifyResult =
     | { kind: "io_error"; message: string };
 
 const MODULE_NAME = "Spec";
-const DEFAULT_CFG = "SPECIFICATION Spec\n";
+
+// .cfg は SPECIFICATION 行を必ず含む。 spec 中で `### Liveness` 表が宣言されていれば PROPERTY 行を
+// 追加して TLC に時相プロパティを検証させる。 names は TLA+ MODULE 内の `<name> == <formula>` 定義と
+// 対応する。
+const buildCfg = (propertyNames: readonly string[]): string => {
+    const lines = ["SPECIFICATION Spec"];
+    if (propertyNames.length > 0) {
+        lines.push(`PROPERTY ${propertyNames.join(" ")}`);
+    }
+    return lines.join("\n") + "\n";
+};
 
 const summarizeTlcOutput = (stdout: string): string => {
     // TLC の長い出力から「状態数 / 完了 / エラー」行のみ抜き出す。
@@ -195,6 +205,7 @@ export const verify = (
         doc.eventPayloads,
         MODULE_NAME,
         bound,
+        doc.liveness,
     );
 
     let tempDir: string;
@@ -211,7 +222,7 @@ export const verify = (
     const cfgFile = join(tempDir, `${MODULE_NAME}.cfg`);
     try {
         deps.writeFile(tlaFile, tla);
-        deps.writeFile(cfgFile, DEFAULT_CFG);
+        deps.writeFile(cfgFile, buildCfg(doc.liveness.map((p) => p.name)));
     } catch (e) {
         return {
             kind: "io_error",
