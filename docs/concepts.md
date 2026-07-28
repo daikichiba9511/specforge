@@ -1,392 +1,226 @@
-# specforge: 基本概念と背景
+# specforgeを理解するための基本概念
 
-specforge を使う上で前提となる理論的な知識と、 ツールが何を繋いでいて、 何が検証できるのかを
-段階的に整理する。 新規ユーザがツールを使い始める前に読むことを想定。 詳細仕様は
-[`./spec.md`](./spec.md)、 採用判断は [`./decisions.md`](./decisions.md) を参照。
+この文書は、振る舞い仕様や形式検証に初めて触れる人を対象に、specforgeが扱う理論と検査結果の読み方を説明する。
+コマンドの使い方は[README](../README.md)、仕様の作成手順は[振る舞い仕様の書き方](./writing-specs.md)を参照する。
 
----
+## 状態機械
 
-## 1. このツールが解決する問題
+**状態機械**は、システムの振る舞いを状態と遷移で表すモデルである。
+状態は「現在どの段階にいるか」を表し、遷移は「どの出来事によって次の状態へ移るか」を表す。
 
-ソフトウェアの **振る舞いに関する仕様** (状態とイベントと遷移の組合せ) は、 手で書いたテキストで
-管理されがちで、 「この仕様で本当に deadlock しないか」「特定の状態に必ず到達するか」を
-人手で網羅検証するのは現実的でない。
+例えば、信号機を赤、青、黄の三状態として表し、タイマーによって次の色へ進むように定義できる。
+現在が赤なら次は青、現在が青なら次は黄というように、現在の状態から可能な反応が決まる。
 
-形式検証 (Formal Verification) のツール — FDR4 や TLC — はこの問題を機械的に解く。 が、 入力言語
-(CSPm や TLA+) は学習コストが高く、 仕様を直接書くのは敷居が高い。
-
-specforge は **Mermaid stateDiagram-v2 で書かれた振る舞い仕様** を、 機械検証のための仕様 (TLA+ /
-CSPm) に変換することで、 「人が書きやすい層」と「機械が検証できる層」を繋ぐ。
-
-```
-人が書く層: Mermaid + markdown 表 (spec-behavior 規律)
-   ↓ specforge
-機械が検証する層: TLA+ + TLC (primary) / CSPm + FDR4 (secondary)
-```
-
----
-
-## 2. 入力側: 振る舞い仕様としての拡張状態機械
-
-### 2.1 状態機械 (State Machine) とは
-
-有限個の **状態** と、 状態間の **遷移** で振る舞いを表すモデル。 「今どの状態か」が振る舞いを
-完全に決定する (= memoryless)。 遷移は **トリガ (event)** によって発火する。
-
-```
-[*] → Idle → coin_inserted → Selecting → choose_item → Dispensing → done → [*]
+```mermaid
+%%{init: {"theme": "dark"}}%%
+stateDiagram-v2
+    state "赤" as Red
+    state "青" as Green
+    state "黄" as Yellow
+    [*] --> Red
+    Red --> Green : timer
+    Green --> Yellow : timer
+    Yellow --> Red : timer
 ```
 
-これだけだと「コイン投入回数」「残高」のような連続値は表現できない。
+状態数と遷移数が有限のものを**有限状態機械**という。
+有限であれば、原理上はすべての到達可能な状態を列挙できる。
 
-### 2.2 拡張状態機械 (Extended State Machine)
+## 拡張状態機械
 
-状態に加えて **状態変数** (state variable) を持つ。 同じ state でも変数の値で遷移先 / 発火可否が
-変わる。 遷移の **ガード (guard)** が変数を参照して条件分岐する。
+残高や再試行回数のような値を、状態名だけで表すと状態数が増えすぎる。
+そこで、状態機械に状態変数、ガード、アクションを加えた**拡張状態機械**を使う。
 
-例: `Selecting` 状態で `coin_inserted` event を受けたとき、
+- 状態変数は、遷移後も保持する値である。
+- ガードは、遷移を選べる条件である。
+- アクションは、遷移に伴う作用を表す名前である。
 
-- `balance > 0` (= まだ残高あり) なら `Selecting` に留まる
-- そうでなければ別の遷移 (例: `Idle` に戻る) を発火する
+自動販売機が`Selecting`状態にいるとき、残高`balance`が1以上なら購入へ進み、0なら進めない、という条件をガードで表現できる。
 
-この「state + state vars」の組合せが本ツールが扱うモデル。 UML の state diagram に近い。
-
-### 2.3 spec-behavior の規律
-
-本リポジトリの [spec-behavior skill](../.agents/skills/spec-behavior/SKILL.md) の規律で書かれた spec
-は、 形式検証に変換しやすい 形をしている:
-
-| 要素              | 規律                                           | 機械検証への寄与                                  |
-| ----------------- | ---------------------------------------------- | ------------------------------------------------- |
-| 遷移ラベル        | `event [guard] / action` (UML 慣習)            | event / guard / action を構造化 parse 可能        |
-| 引数表記          | `name(arg1, arg2)` の関数形式                  | payload 列との対応が取れる                        |
-| イベント契約表    | event ごとに発生元 / 通信特性 / payload を明示 | TLA+ の `\E new_<var>` で payload を非決定 bind   |
-| 共有状態表        | 状態変数を型・書き手付きで宣言                 | TLA+ VARIABLES に直接マッピング                   |
-| ガード定義表      | ガードタグ → 式の辞書                          | 遷移ラベルが短くなり再利用しやすい                |
-| 設計メモ          | 「未定義イベントの扱い」「冪等性」 等          | 検証時の仮定を明示化                              |
-| 直交領域 (`--`)   | 並行に進む region                              | TLA+ region phase 変数 / CSPm `\|\|\|` 並列に変換 |
-| `### Liveness` 表 | 時相プロパティを宣言                           | TLA+ `PROPERTY` + `WF_vars(Next)` 公平性 emit     |
-
-つまり spec-behavior は **「形式検証可能な拡張状態機械の書き方を人間にやさしい形で規律化したもの」**
-と言える。 specforge はその規律を機械的にチェッカ入力へ落とす変換器。
-
-> 遷移ラベル `event [guard] / action` の読み下し方や省略パターンの詳細は
-> [`./label-reading.md`](./label-reading.md) を参照。
-
----
-
-## 3. 形式手法とは何が嬉しいのか
-
-「テストは特定 input でしか動かないが、 形式検証は状態空間を網羅探索する」のが core idea。
-
-| 観点     | テスト                   | 形式検証                                 |
-| -------- | ------------------------ | ---------------------------------------- |
-| 探索範囲 | テストケースの具体値のみ | 仕様で許される全状態                     |
-| 失敗時   | 1 つの input で再現      | 反例 (counterexample) trace を機械が生成 |
-| 抽象度   | 実装レベル               | 仕様レベル (実装バグは見つけない)        |
-| 完全性   | 不完全 (bug は残る)      | 仕様内では完全 (bounded 内で)            |
-
-形式検証で見つけられるのは **仕様の論理的な穴** で、 実装のコーディングミスではない。
-「仕様の段階で間違ってないか」を確認するためのツール。
-
----
-
-## 4. 形式手法のバックエンド
-
-specforge は 2 つの形式手法に変換できる。 役割は別。
-
-### 4.1 CSP (Communicating Sequential Processes)
-
-C.A.R. Hoare が提案した **プロセス代数** (1978 paper / 1985 book)。 プロセスが channel
-で同期通信する モデルを、 数式的な代数演算で組み立てる。
-
-主要演算子:
-
-| 演算子           | 意味                                              |
-| ---------------- | ------------------------------------------------- |
-| `a -> P`         | 「event a を受けて P になる」 (prefix)            |
-| `P [] Q`         | 「P か Q を非決定的に選ぶ」 (external choice)     |
-| `P \|\|\| Q`     | 「P と Q を並行実行 (同期せず)」 (interleaving)   |
-| `P [\| ev \|] Q` | 「ev でのみ同期して並行」 (synchronized parallel) |
-| `P ; Q`          | 「P が SKIP したら Q」 (sequential)               |
-| `P \ X`          | 「event 集合 X を P から隠す」 (hiding)           |
-| `P /\ Q`         | 「P 実行中に Q で割り込み」 (interrupt)           |
-
-CSPm は CSP の機械可読方言で、 **FDR4** が検証器。 主に確認できるのは:
-
-- **deadlock-free**: どこかで進めない状態にならない
-- **refinement**: 抽象 spec ⊑ 詳細 spec (trace 包含)
-- **divergence-free**: 内部 event が無限ループしない
-
-specforge は CSPm 出力を持つが、 FDR4 の入手性が悪いので **secondary backend** 扱い。
-
-> 演算子の意味、 合成 / 同期の読み分け、 specforge 生成 CSPm の読み方は
-> [`./csp-reading.md`](./csp-reading.md) を参照。
-
-### 4.2 TLA+ (Temporal Logic of Actions)
-
-Leslie Lamport が提案した **時相論理 + アクション** (2002 book "Specifying Systems")。 状態を
-変数の組として扱い、 状態遷移をアクション述語 (`x' = x + 1` のような prime 記法) で書く。
-
-canonical な spec の形:
-
-```
-VARIABLES x, y
-Init == x = 0 /\ y = 0
-Next == (x' = x + 1 /\ y' = y) \/ (y' = y + 1 /\ x' = x)
-Spec == Init /\ [][Next]_vars
+```mermaid
+%%{init: {"theme": "dark"}}%%
+stateDiagram-v2
+    state "商品選択中" as Selecting
+    state "払い出し中" as Dispensing
+    Selecting --> Dispensing : choose_item [enough_balance] / lock_item
 ```
 
-- `Init` で初期状態
-- `Next` で全遷移の論理和
-- `[][Next]_vars` で「任意の step で Next または stutter (UNCHANGED vars)」
-- 時相演算子: `[]P` (always)、 `<>P` (eventually)、 `P ~> Q` (P leads to Q)
+specforgeでは、遷移ラベルを`event [guard] / action`の順で記述する。
+この順序を固定することで、図を表示するだけでなく、イベント、ガード、アクションを機械的に分解できる。
 
-TLA+ の検証器は **TLC**。 有限状態化 (state var を有限値域に限定) して BFS で状態空間を網羅し:
+## 階層状態と直交領域
 
-- **deadlock-free** (default)
-- **INVARIANT P** (任意の reachable state で P が成立)
-- **PROPERTY F** (時相論理式 F が成立、 liveness 検証)
-- **counterexample trace** (失敗時に到達経路を出す)
+**階層状態**は、複数の状態を一つの親状態へまとめる表現である。
+親状態から外へ出る遷移は、内部のどの状態にいても共通する退出規則として使える。
 
-を確認する。 specforge は TLA+ + TLC を **primary backend** とする。
+**直交領域**は、複数の状態機械が同時に有効であることを表す。
+決済と在庫確保を別々の直交領域に置けば、どちらが先に完了するかを固定せずに並行性を表現できる。
 
-### 4.3 CSP と TLA+ の使い分け
-
-|                    | CSP / FDR4                    | TLA+ / TLC                         |
-| ------------------ | ----------------------------- | ---------------------------------- |
-| 強み               | プロセス並行性の代数的記述    | 状態 + 時相論理、 数値演算自然     |
-| 弱み               | 数値演算が弱い、 ツール入手性 | 並行性は手書き感、 学習コスト高    |
-| specforge での扱い | secondary                     | primary                            |
-| 主な検証           | refinement, deadlock-free     | invariant, deadlock-free, liveness |
-
-CSP は「プロセスが綺麗に組み合わさるか」を見たいときに強く、 TLA+ は「変数を伴う複雑な状態 遷移」を
-verify したいときに強い。 spec-behavior の状態機械は後者寄り。
-
----
-
-## 5. specforge が繋いでいる pipeline
-
-### 5.1 全体図
-
-```
-人が書く層
-   spec-behavior 規律 (.md)
-     ├─ Mermaid stateDiagram-v2 block
-     ├─ 状態 / イベント / アクション / ガード 表
-     ├─ 共有状態 / イベント契約 表
-     └─ 設計メモ + 任意で `### Liveness` 表
-       │
-       ▼ specforge
-変換層
-   typed AST + side artifacts
-     ├─ AST (Diagram with regions + transitions)
-     ├─ guards: Map<tag, formula>
-     ├─ stateVars: string[]
-     ├─ eventPayloads: Map<event, field[]>
-     └─ liveness: LivenessProp[]
-       │
-       ▼ specforge codegen
-機械が読む層
-   TLA+ MODULE Spec + Spec.cfg          (primary, deno task verify)
-     │     OR
-   CSPm process definitions              (secondary, FDR4 環境ある場合)
-       │
-       ▼ model checker
-検証層
-   TLC が状態空間を BFS で網羅
-     ├─ deadlock-free check
-     ├─ INVARIANT check (もしあれば)
-     └─ PROPERTY (liveness) check (もしあれば)
-       │
-       ▼
-   verified ok  /  counterexample trace
+```mermaid
+%%{init: {"theme": "dark"}}%%
+stateDiagram-v2
+    state Processing {
+        [*] --> Paying
+        Paying --> Paid : payment_authorized
+        Paid --> [*]
+        --
+        [*] --> Reserving
+        Reserving --> Reserved : inventory_reserved
+        Reserved --> [*]
+    }
+    [*] --> Processing
+    Processing --> Finished : / report_result
+    Finished --> [*]
 ```
 
-### 5.2 各段の責務
+この図では、両方の領域が終端へ到達すると`Processing`が完了し、`Finished`へ進める。
+各領域のイベント順序を一つに固定しないため、決済が先の場合と在庫確保が先の場合の両方がモデルに含まれる。
 
-| 段           | モジュール        | 責務                                                                               |
-| ------------ | ----------------- | ---------------------------------------------------------------------------------- |
-| parse        | `src/parser.ts`   | Mermaid syntax → AST。 サブセット外は ParseError で拒絶                            |
-| 表抽出       | `src/spec_doc.ts` | markdown 表からガード辞書 / state var / event payload / liveness を抽出            |
-| validate     | `src/validate.ts` | V001〜V007 で意味的な穴を warning。 `--strict` で error 昇格                       |
-| TLA+ codegen | `src/tla.ts`      | AST + side artifacts → TLA+ MODULE。 composite / 直交領域 / payload binding を反映 |
-| CSPm codegen | `src/cspm.ts`     | 同上、 CSPm 出力 (FDR4 向け)                                                       |
-| verify       | `src/verify.ts`   | TLA+ を一時 file に書き、 `java -cp tla2tools.jar tlc2.TLC` を subprocess 実行     |
+## 抽象構文木と中間表現
 
-### 5.3 状態機械 → TLA+ への変換セマンティクス
+Mermaidは人にとって読みやすいが、表現の自由度が高い。
+別のツールへ渡すには、同じ意味を同じ書き方で表す規則が必要になる。
 
-具体的なマッピング (詳細は [`./spec.md`](./spec.md) §7):
+specforgeは受理するMermaid記法を限定し、入力を**抽象構文木**へ変換する。
+抽象構文木は、入力を単なる文字列ではなく、状態、遷移、イベントなどの種類と関係として保持するデータ構造である。
 
-| 状態機械の要素                  | TLA+ の表現                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------------- |
-| 状態 (`Idle`, `Selecting` 等)   | `phase \in {"Idle", "Selecting", ...}`                                                |
-| 状態変数 (`balance` 等)         | `VARIABLES balance` (Init で 0)                                                       |
-| 遷移 `A --> B : ev [g] / act`   | アクション述語 `A_ev_B == phase = "A" /\ g /\ phase' = "B"`                           |
-| guard                           | アクション述語内の conjunct                                                           |
-| payload binding                 | `\E new_<var> \in Domain: ... /\ <var>' = new_<var>`                                  |
-| composite + 直交領域            | 各 region に `<comp>_r<N>` 変数を追加、 `_inactive` / 入口 / `_done` 3 値で進行 track |
-| terminal state                  | `TerminalStates` 集合と `Terminated` 述語、 Stutter action                            |
-| 完了遷移 (composite から外への) | 全 region `_done` を precondition にしたアクション                                    |
+```mermaid
+%%{init: {"theme": "dark"}}%%
+flowchart LR
+    Input["Markdown仕様<br/>Mermaidと定義表"]
+    AST["抽象構文木と補助情報<br/>状態・遷移・条件"]
+    TLA["TLA+"]
+    CSP["CSPm"]
+    TLC["TLC"]
+    FDR["FDR4"]
 
----
-
-## 6. 何が検証できるか
-
-### 6.1 Safety: 「悪いことは起きない」
-
-**例: deadlock-free**
-
-任意の reachable state から、 enabled な action (Next の disjunct) が必ずある。 TLC のデフォルト
-check。 `examples/deadlock.md` は composite region に出口無しの state を含むので reachable な
-deadlock 状態に到達し、 TLC が `Error: Deadlock reached.` を返す。
-
-**例: invariant**
-
-「全 reachable state で P が成立」を確認する。 `INVARIANT P` 形式で `.cfg` に書く。 例えば
-`INVARIANT balance >= 0` で「残高が決して負にならない」を保証。 specforge は invariant 用 markdown
-表を現状未提供 (生 TLA+ を手で編集する必要あり、 将来追加候補)。
-
-### 6.2 Liveness: 「良いことは必ず起きる」
-
-**例: termination**
-
-「全 behavior が最終的に terminal state に到達する」を `<>Terminated` で書く (eventually
-Terminated)。 specforge は `### Liveness` 表があると `Terminated == phase \in TerminalStates`
-を自動定義し、 PROPERTY として TLC に検証させる。
-
-**例: progress**
-
-「特定 event がいつかは応答される」 / 「retry が無限ループしない」のような進行性。 TLA+ では
-`<>(condition)` や `P ~> Q` (P が起きたら eventually Q) で表現。
-
-### 6.3 Fairness 仮定の必要性
-
-Liveness を素朴に検証すると、 TLC は病的な実行を許してしまう:
-
-```
-behavior 1: Reading → Reading → Reading → ... (永遠に stutter)
+    Input --> AST
+    AST --> TLA --> TLC
+    AST --> CSP --> FDR
 ```
 
-これは `[][Next]_vars` の `_vars` (UNCHANGED 許可) によって正当な動作とみなされる。 結果、
-`<>Terminated` は false (= 終端到達しない behavior が存在する) になる。
+中間表現を一度作ることで、同じ入力からTLA+とCSPmを生成できる。
+`--json`を使えば、この中間表現をJSONとして取り出し、独自の検査や変換へ接続できる。
 
-**Fairness assumption** を加えるとこの病的実行を排除できる:
+## 形式仕様とモデル検査
 
-- **WF (Weak Fairness)**: 「enable され続けるなら必ず実行される」
-- **SF (Strong Fairness)**: 「無限に何度も enable されるなら必ず実行される」 (より強い)
+**形式仕様**は、曖昧さを避けるために、状態や性質を数学的な規則で表した仕様である。
+**モデル検査**は、形式仕様から到達可能な状態を探索し、満たすべき性質に違反する実行を探す方法である。
 
-specforge は `### Liveness` 表がある spec に対し **`Fairness == WF_vars(Next)`** を自動付加する (WF
-on Next 全体)。 多くの spec ではこれで十分。 細かい action 別の WF/SF 指定は将来課題。
+通常のテストでは、開発者が具体的な入力と順序を選ぶ。
+モデル検査では、モデルに含まれる選択肢から生じる状態と順序を機械が探索する。
+そのため、二つの処理が特定の順序で進んだときだけ起きる行き止まりや、状態が変化し続けるのに完了しない循環を見つけやすい。
 
-### 6.4 何が検証できないか
+ただし、無限に多い値をそのまま全探索することはできない。
+specforgeは状態変数の値域を`0..N`へ有限化し、`--bound=N`で上限を指定する。
+検査結果は、この値域の範囲に限定される。
 
-- **パフォーマンス特性**: latency、 throughput、 メモリ使用量
-- **実装バグ**: 検証は仕様レベル。 実装が仕様と乖離していたら本検証は無意味
-- **仕様の妥当性**: 「この仕様が要求を満たすか」 (= 仕様自体が正しい想定で動く)
-- **無限状態**: state var を `0..N` で bound して有限化しているので、 「絶対値域」では検証してない
+## TLA+とTLC
 
----
+**TLA+**は、状態、状態変化、時間に関する性質を記述する形式仕様言語である。
+**TLC**は、TLA+で書かれた有限のモデルを探索するモデル検査器である。
 
-## 7. 状態空間と bound
+specforgeは通常の検証先としてTLA+とTLCを使う。
+Mermaidの状態をTLA+の変数の値へ、遷移を次状態を定める論理式へ変換する。
 
-形式検証は状態空間を網羅探索する。 state var が無限値域 (任意の整数 等) なら検証不可。 specforge は
-`--bound=N` で `Domain == 0..N` に限定し、 有限化する。
+TLCは、デッドロックと、仕様で宣言した時間に関する性質を検査する。
+現在の`specforge verify`は、TLCの結果を要約し、成功時には探索した状態数を表示する。
+失敗時には違反の種類を表示するが、TLCが内部で生成した詳細な状態列はそのまま表示しない。
 
-bound と state space の関係 (実測):
+## CSPmとFDR4
 
-| 例                          | bound=1        | bound=3              | bound=5            |
-| --------------------------- | -------------- | -------------------- | ------------------ |
-| docs/behavior.md            | 10/6 distinct  | (state var の影響小) | (同上)             |
-| examples/vending-machine.md | 42/14 distinct | —                    | —                  |
-| examples/order-workflow.md  | 数十           | 2744/512             | 数万               |
-| hitl spec                   | 67/27 distinct | 1607/669 distinct    | 9275/3943 distinct |
+**CSP**は、並行して動く処理を、観測できるイベント列と処理同士の組合せで表す理論である。
+**CSPm**は、そのモデルを記述するための言語である。 **FDR4**は、CSPmのモデルを検査するツールである。
 
-**塩梅のコツ**:
+specforgeはCSPmも生成できるが、FDR4を自動では起動しない。
+現在はTLA+とTLCを主な検証経路とし、CSPmはFDR4を利用できる環境で追加検査するために残している。
+生成されたCSPmの読み方は[CSPm出力の読み方](./csp-reading.md)で説明する。
 
-- 境界条件 (`x >= 5` の `x = 4/5/6`) を網羅したいなら bound >= 境界値 + 1 程度
-- bound を上げすぎると state space 爆発 (5sec で済む検証が 1 分超になることも)
-- 「同型な大きい bound より、 小さい bound で多様な scenario をカバー」する設計が good
+## 安全性と進行性
 
----
+形式検証で調べる性質は、大きく**安全性**と**進行性**に分けられる。
 
-## 8. 実用上の典型シナリオ
+安全性は、「悪いことが起きない」という性質である。
+例えば、残高が負にならない、成功と失敗が同時に成立しない、といった規則が該当する。
 
-### シナリオ 1: 終端到達を保証したい
+進行性は、「望ましいことがいつか起きる」という性質である。
+例えば、受理した注文処理がいつか成功または失敗として終了する、という規則が該当する。
 
-spec に terminal state (`X --> [*]`) を入れ、 `### Liveness` 表に `Termination | <>Terminated` を
-書く。 `deno task verify <spec>` で safety + liveness 両方が check される。
+specforgeは、終端状態へいつか到達する性質を次のように宣言できる。
 
-### シナリオ 2: 不正状態に陥らないことを保証したい
+```markdown
+### 進行性
 
-spec に状態変数を入れ、 状態変数の不変条件 (例: `balance >= 0`) を確認したい。 現状 specforge は
-INVARIANT 表を提供してないので、 生成された TLA+ output を手で取り出し、 `.cfg` を作って
-`INVARIANT BalanceNonneg` を追加する形になる。 将来課題。
+| 性質の名前    | TLA+式         |
+| ------------- | -------------- |
+| `Termination` | `<>Terminated` |
+```
 
-### シナリオ 3: 並行処理のレース条件を検出したい
+`<>P`は、将来のどこかで`P`が成立することを表す。
+したがって`<>Terminated`は、いつか終端状態へ到達するという意味になる。
 
-composite + 直交領域で並行 region を書き、 共有状態変数で競合点を表現する。 TLC が全 interleaving
-を探索して deadlock / invariant 違反 / liveness 失敗を検出。 `examples
-/producer-consumer.md` や
-`examples/order-workflow.md` を参照。
+現在のspecforgeは任意の不変条件をMarkdown表から生成する機能を持たない。
+独自の安全性を検査するには、生成したTLA+を編集して不変条件を追加する必要がある。
 
-### シナリオ 4: spec が間違っていないか早期に発見したい
+## デッドロックと終了しない循環
 
-実装に入る前に specforge で verify。 V001〜V007 で静的な穴を warning、 TLC で動的な穴 (deadlock、
-liveness 失敗) を検出。 仕様レベルの矛盾を実装前に潰せる。
+**デッドロック**は、終端状態ではないのに、選べる遷移が一つもない状態である。
+例えば、エラー状態から回復も終了もできない場合が該当する。
 
----
+終了しない循環は、デッドロックとは異なる。
+再試行中と処理中を繰り返すモデルは、毎回遷移できるため停止していないが、終端状態へ到達しない。
+この問題は、終端到達を進行性として宣言して検査する。
 
-## 9. specforge を使うことのトレードオフ
+specforgeの静的検査は、明らかな出口のない状態を入力の形から指摘する。
+TLCは、実際に到達可能な状態の組合せを探索してデッドロックや進行性違反を調べる。
+両者は同じ検査ではなく、互いを補う。
 
-### Pros
+## 公平性
 
-- spec-behavior の規律で書けば、 verify までボタン一発
-- TLA+ / CSP の構文を知らなくても検証可能
-- 仕様 review プロセスに verify を組み込める
+**反例**は、宣言した性質が成立しないことを示す具体的な状態遷移である。
+進行性を検査するとき、実行可能な遷移を永久に選ばない実行まで許すと、多くのモデルが不自然な反例を持つ。
+そこで、実行可能な状態が続く遷移はいずれ選ばれる、という**弱公平性**を仮定する。
 
-### Cons
+specforgeは進行性が一件以上宣言された場合、次状態を選ぶ処理全体へ弱公平性を加える。
+これは、外部サービスが必ず成功するという保証ではない。
+モデルの中で実行可能な遷移を、選択器が永遠に無視し続けないという仮定である。
 
-- specforge が生成する TLA+ は固定パターン (専門家が手書きする洗練度には及ばない)
-- 高度な時相プロパティ (Fairness の細かい指定、 複雑な refinement) は手書きが必要
-- state var の Domain が単一型 (`0..bound`、 spec.md §1.2 非目的 + decisions.md 参照)
+現在は、遷移ごとに異なる公平性を指定できない。
+したがって、検査結果を読むときは、有限の値域だけでなく、この一律の弱公平性も前提に含める。
 
-specforge は「形式検証への入り口」を低くするツールで、 形式検証の専門家が書く高度な spec の
-完全な代替ではない。 が、 spec-behavior 規律で書ける範囲なら十分実用的。
+## 検査できることとできないこと
 
----
+| 対象                               | 現在のspecforgeでの扱い           |
+| ---------------------------------- | --------------------------------- |
+| 受理するMermaid構文                | 構文解析時に検査する              |
+| 未定義ガードや名前の不一致         | 静的検査で指摘する                |
+| 明らかな未到達状態や出口のない状態 | 静的検査で指摘する                |
+| 到達可能なデッドロック             | TLCで探索する                     |
+| 宣言した終端到達などの進行性       | TLCで探索する                     |
+| 任意の不変条件                     | 自動生成しない                    |
+| 実装が仕様に一致すること           | 検査しない                        |
+| アクション内部の副作用や冪等性     | 検査しない                        |
+| 無限の値域すべて                   | 検査しない。`--bound`で有限化する |
+| 複数仕様ファイルの合成             | 現在は生成しない                  |
+| 直交領域の同名イベント同期         | 現在は生成しない                  |
 
-## 10. 参考文献 / リンク
+`verified ok`を「システム全体が正しい」と読み替えてはいけない。
+正確には、指定した値域と公平性の下で、入力から生成したモデルに、宣言した性質への反例が見つからなかったことを意味する。
 
-### CSP
+## 状態数と値域
 
-- C.A.R. Hoare, "Communicating Sequential Processes" (1978 paper) — オリジナル論文
-- C.A.R. Hoare, "Communicating Sequential Processes" (1985, Prentice Hall) — book
-- FDR4 公式: https://www.cs.ox.ac.uk/projects/fdr/
+状態変数を増やすほど、値の組合せによって探索状態数が増える。
+`--bound`を大きくすると境界値を含めやすくなる一方、検査時間とメモリ使用量も増える。
 
-### TLA+
+最初は、ガードに現れる境界へ到達できる最小値を選ぶ。
+例えば`retry_count >= 3`を検査するなら、少なくとも`--bound=3`が必要である。
+その後、必要な境界を追加しながら探索状態数の増加を確認する。
 
-- Leslie Lamport, "Specifying Systems" (2002) — 公式 textbook (無料 PDF 公開)
-  https://lamport.azurewebsites.net/tla/book.html
-- TLA+ Home: https://lamport.azurewebsites.net/tla/tla.html
-- learntla.com — Hillel Wayne による現代的なチュートリアル
+## 文書の読み分け
 
-### 周辺
-
-- TLA+ Toolbox (IDE): https://lamport.azurewebsites.net/tla/toolbox.html
-- TLA+ Examples: https://github.com/tlaplus/Examples
-- Lamport の TLA+ lecture videos: https://lamport.azurewebsites.net/video/videos.html
-
-### 本リポジトリ内の関連 doc
-
-- [`./behavior-specs.md`](./behavior-specs.md) — 振る舞い仕様の目的、境界、完全性、合成
-- [`./writing-specs.md`](./writing-specs.md) — specforge 互換仕様の作成手順
-- [`./label-reading.md`](./label-reading.md) — `event [guard] / action` ラベルの読み方 (UML 慣習、
-  省略パターン、 実行順序)
-- [`./csp-reading.md`](./csp-reading.md) — CSP / CSPm の読み方 (演算子、 合成、 同期、 specforge
-  生成 CSPm の読み下し)
-- [`./spec.md`](./spec.md) — specforge 入力言語契約 (Mermaid サブセット + 補助情報)
-- [`./behavior.md`](./behavior.md) — specforge 自身の振る舞い仕様 (self-dogfood)
-- [`./decisions.md`](./decisions.md) — 設計判断記録 + 未決問題
-- [`../examples/README.md`](../examples/README.md) — 動く例 8 件
-- [`../tasks/todo.md`](../tasks/todo.md) — 残タスク
+- [振る舞い仕様とは何か](./behavior-specs.md)：対象、完全性、実装との境界
+- [振る舞い仕様の書き方](./writing-specs.md)：要求から図と表を作る手順
+- [入力仕様](./spec.md)：構文と変換規則の正準契約
+- [遷移ラベルの読み方](./label-reading.md)：ラベルの各要素と変換後の対応
+- [CSPm出力の読み方](./csp-reading.md)：生成されたCSPmの基礎
+- [サンプル集](../examples/README.md)：正常例と問題を含む例の比較

@@ -46,8 +46,8 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
 - [ ] **fairness 種別の override**: 現状は WF on Next 一律。 `### Fairness` 表で action 毎に WF/SF
       を指定 / 一部 action のみ fairness 仮定する形を検討。 多くの spec では WF on Next で
       足りるはずなので優先度は低い
-- [ ] **counterexample の整形**: 現状 TLC の生 stdout を流すだけ。 liveness 失敗時の trace は
-      もっと厳しいので、 path を読みやすく整形
+- [ ] **反例の整形**: 現在はTLC出力から違反の種類と探索結果だけを要約し、詳細な状態列を表示しない。
+      進行性違反時の状態列を、仕様上の状態とイベントへ対応付けて簡潔に表示する
 
 ### parser 拡張
 
@@ -98,9 +98,9 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
 
 ここは「将来やる」というより「**今のところ意図的にやらない**」決定の記録。
 
-- **action は opaque な channel として扱う** (CSPm の event prefix / TLA+ で名前のみ)。 action
-  内部の semantics は spec のスコープ外 (実装層責務)。 Phase 5 で再考予定だが、 spec
-  をシンプルに保つために現状の境界を維持する判断
+- **アクションの内部処理は展開しない**。CSPmではイベント名として残すが、TLA+の状態更新には反映しない。
+  実際の副作用や冪等性は振る舞いモデルの検査対象外である。Phase
+  5で状態変数の更新規則を追加する可能性はあるが、現在はこの境界を維持する
 - **TLA+ Domain は単一型 (Int)**: 全 state var が同じ `0..bound` domain を共有。 per-var domain
   を入れると spec の表現力は上がるが、 表の column を増やす必要があり敷居が高くなる。 必要に
   なれば検討

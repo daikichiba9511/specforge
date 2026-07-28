@@ -1,9 +1,9 @@
 ---
 name: spec-behavior
-description: "Author and review behavior specifications using tables and Mermaid extended state machines, then validate and verify specforge-compatible specs. Use when the user wants a behavior spec, state machine, Mermaid spec, or asks to review or lint one. Trigger on phrases such as '振る舞い仕様を書きたい', '状態機械を書きたい', 'Mermaidで仕様', 'この仕様をレビューして', and 'specforgeで検証して'."
+description: "表とMermaid拡張状態機械を使って振る舞い仕様を作成、レビューし、specforge互換仕様を静的検査してTLCで検証する。振る舞い仕様、状態機械、Mermaid仕様の作成やレビュー、specforgeでの検証を依頼された場合に使う。"
 ---
 
-# Spec Behavior
+# 振る舞い仕様
 
 振る舞い仕様の作成とレビューを支援する。 変換系は表、リアクティブ系は Mermaid
 拡張状態機械で書き分ける。
@@ -13,39 +13,39 @@ description: "Author and review behavior specifications using tables and Mermaid
 も読む。 specforge と同じリポジトリで作業する場合、または specforge
 で検証する場合は、`references/specforge-workflow.md` も読む。
 
-## Mode
+## モード
 
 最初に次のどちらかのモードを選ぶ。
 
-- **write**：振る舞い仕様の新規作成、下書き、修正を依頼された場合
-- **review**：既存仕様のレビュー、検査、lint、形式検証を依頼された場合
+- **作成（write）**：振る舞い仕様の新規作成、下書き、修正を依頼された場合
+- **レビュー（review）**：既存仕様のレビュー、検査、文章検査、形式検証を依頼された場合
 
 依頼内容から判定できない場合だけ、対象と期待する成果物を一つの短い質問で確認する。
 
-## Write Workflow
+## 作成手順
 
 1. 対象となる振る舞い、ドメイン境界、抽象度、保存先を特定する。
 2. 変換系、リアクティブ系、混合系のどれかに分類する。
 3. ガイドに従って正常系と異常系を同じ精度で記述する。
 4. 状態、イベント、ガード、アクション、共有状態の表を必要に応じて追加する。
 5. 設計メモに省略方針、未定義イベント、冪等性、既知の未対応ケースを書く。
-6. ガイドの self-check を実行する。
-7. specforge 対象なら構文検査、strict validation、必要に応じて TLC 検証を実行する。
+6. ガイドの自己点検を実行する。
+7. specforge対象なら構文解析と厳格な静的検査を行い、必要に応じてTLCでモデル検査する。
 
 保存先が明示されていない場合は、既存の文書配置から妥当なパスを選べるときだけ選び、それ以外は保存前に確認する。
 
-## Review Workflow
+## レビュー手順
 
 1. 対象ファイルと、その仕様が表すドメイン境界を確認する。
-2. ガイドの mechanical checks を先に実行する。
-3. semantic checks と設計メモの完全性を確認する。
-4. specforge 対象なら parser、validation、要求された形式検証を実行する。
-5. finding を error、warning、info の順に報告する。
-6. 各 finding に元ファイルの行番号、現状、影響、具体的な修正案を含める。
+2. ガイドの機械的な検査を先に実行する。
+3. 意味上の検査と設計メモの完全性を確認する。
+4. specforge対象なら構文解析、静的検査、要求された形式検証を実行する。
+5. 指摘をエラー、警告、情報の順に報告する。
+6. 各指摘に元ファイルの行番号、現状、影響、具体的な修正案を含める。
 
-review モードでは、ユーザーが修正も依頼していない限り対象ファイルを編集しない。
+レビューモードでは、ユーザーが修正も依頼していない限り対象ファイルを編集しない。
 
-## Rules
+## 規則
 
 - 入力だけで出力が決まる変換は表で書く。
 - 状態、履歴、モード、並列性に依存する振る舞いは Mermaid `stateDiagram-v2` で書く。

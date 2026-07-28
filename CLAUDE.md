@@ -36,15 +36,17 @@ Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)   →  deadlock-f
   vs liveness / fairness / 検証できること & できないこと)。 新規ユーザはまずこれを読む
 - **[`docs/spec.md`](./docs/spec.md)** — 入力言語契約 (Mermaid サブセット / BNF / 遷移ラベル /
   補助情報 / TLA+ + CSPm 変換セマンティクス)
-- **[`docs/behavior.md`](./docs/behavior.md)** — specforge 自身のランタイム振る舞い仕様
-  (`spec-behavior` 流の self-dogfood ターゲット、 TLC verified deadlock-free + termination 済)
+- **[`docs/behavior.md`](./docs/behavior.md)** — specforge自身の実行時振る舞い仕様
+  （specforge自身でTLA+へ変換し、TLCによるデッドロックと終端到達の検査済み）
 - **[`docs/perf.md`](./docs/perf.md)** — bench (`deno task bench`) workflow / before-after 比較 /
   CPU プロファイル取得手順
 - **[`docs/decisions.md`](./docs/decisions.md)** — 採用済の設計判断 (Deno 採用 / hand-roll parser /
   TLA+ primary / WF on Next default 等) + 未決の問題 (open design questions)
 - **[`tasks/todo.md`](./tasks/todo.md)** — 残タスク (Pri A/B/C, Size S/M/L) + 完了履歴サマリ +
   「意図的にやらない」決定の記録
-- **[`examples/README.md`](./examples/README.md)** — 8 例 (正常 6 + 反例 2)
+- **[`examples/README.md`](./examples/README.md)** — 10例（正常例7 + 問題例3）
+- **[`reader-term-contract-documentation.md`](./reader-term-contract-documentation.md)** —
+  利用者向け文書、 手順書、保守者向け文書の想定読者と用語の使い分け
 
 ## Status snapshot
 
@@ -56,8 +58,8 @@ Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)   →  deadlock-f
 - `specforge verify` (TLC subprocess wrapper) + `--bound=N` で状態空間調整
 - Validation V001〜V007 + `--strict` flag、 `--json` output mode
 - Liveness/fairness 検証 (`### Liveness` 表 → TLA+ `<>Terminated` 等 + `WF_vars(Next)` 公平性)
-- self-dogfood 達成 (`docs/behavior.md` を TLC verified deadlock-free、 10 states / 6 distinct)
-- 8 examples (正常 6 + deadlock / unreachable 反例 2) + CI + bench
+- `docs/behavior.md`をspecforge自身で検査済み（上限3で674生成状態・373種類）
+- 10例（正常例7 + 問題例3）+ CI + bench
 
 詳細は `git log` 参照。 残タスクは [`tasks/todo.md`](./tasks/todo.md)。
 
