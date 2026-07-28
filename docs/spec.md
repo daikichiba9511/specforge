@@ -1,7 +1,7 @@
 # specforge 入力仕様
 
 specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それを取り巻く補助情報 (イベント契約表
-/ 設計メモ等) の契約を定める。dotfiles 管理下の `spec-behavior` skill
+/ 設計メモ等) の契約を定める。本リポジトリの `spec-behavior` skill
 が出力するスペックを正準入力として想定し、そこからの**機械的な TLA+ / CSPm
 変換**を成立させるための制約を明示する (TLA+ + TLC を primary、CSPm + FDR4 を secondary backend)。
 
@@ -27,7 +27,7 @@ specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それ�
 
 ### 1.3 成否判定
 
-- `spec-behavior` SKILL.md 内の全 Mermaid サンプルが無修正で parse できる
+- `spec-behavior` skill の参照資料にある全 Mermaid サンプルが無修正で parse できる
 - `~/job/docs/tasks/active/hitl-evaluation-system-phase-flow-spec.md` 相当の現実スペックが parse
   できる
 - 変換結果が **TLC** (TLA+) で構文受理され、deadlock-free check が走る (`specforge verify` で
@@ -473,7 +473,7 @@ A = ev -> (if g1 then a1 -> B
 `internal_*` イベントを `\ {internal_*}` で隠蔽する候補。これにより外部から見て tau (黙示)
 として振る舞う。
 
-### 7.5 直交領域 → `|||` / `[| events |]`
+### 7.5 直交領域 → `|||`
 
 composite に複数 region がある場合:
 
@@ -495,7 +495,9 @@ PA = done_a -> SKIP
 PX = done_x -> SKIP
 ```
 
-broadcast (同名 event を複数 region に書く) は `[| {shared_events} |]` (同期セット指定) で表現する。
+broadcast は、同名 event を持つ region を `[| {shared_events} |]` で合成すれば表現できる。
+ただし、現行の CSPm backend はすべての直交領域を `|||` で合成し、shared event set を抽出しない。
+TLA+ backend も各 region の action を個別 step として生成するため、同名 event の同期は未実装である。
 
 ### 7.6 Composite 退出 → interrupt (`/\`)
 
@@ -593,9 +595,11 @@ Sampling(catalog_size) = sampling_done ->
 
 ## 9. 参照
 
-- `spec-behavior` skill: `~/.claude/skills/spec-behavior/SKILL.md` — 入力 spec を書く側の規律
-- `spec-behavior/references/multi-entity-composition.md` — multi-entity / refinement / impl
-  分離パターン
+- [`../.agents/skills/spec-behavior/SKILL.md`](../.agents/skills/spec-behavior/SKILL.md) — 入力 spec
+  を作成、レビュー、検証する repo-local skill
+- [`../.agents/skills/spec-behavior/references/multi-entity-composition.md`](../.agents/skills/spec-behavior/references/multi-entity-composition.md)
+  — multi-entity / refinement / impl 分離パターン
+- [`./writing-specs.md`](./writing-specs.md) — 人が仕様を書くための手順
 - Mermaid: https://mermaid.js.org/syntax/stateDiagram.html
 - FDR4 / CSPm: https://www.cs.ox.ac.uk/projects/fdr/
 

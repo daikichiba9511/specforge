@@ -1,100 +1,300 @@
 # specforge
 
-Forge Mermaid `stateDiagram-v2` behavior specifications into formal verification targets (TLA+ / TLC
-primary, CSPm / FDR4 secondary).
+specforgeは、Mermaid
+`stateDiagram-v2`で書いた振る舞い仕様を、形式検証に使えるTLA+とCSPmへ変換するコマンドラインツールです。
+TLA+を生成するだけでなく、`specforge verify`からTLCを起動し、状態空間の探索まで一続きに実行できます。
 
-## What it does
+個人の仕様作成を支えるために開発していますが、リポジトリをクローンしてDenoでビルドすれば、単体の実行ファイルとして利用できます。
+現在はパッケージレジストリやリリースバイナリでは配布していません。
 
-Takes Mermaid state machines authored under the `spec-behavior` discipline
-(`event [guard] / action`, orthogonal regions, state variables, event payload contracts, etc.) and
-emits TLA+ or CSPm. The TLA+ output can be model-checked directly with TLC via `specforge verify`.
+## specforgeが扱うもの
 
+specforgeの入力は、状態、イベント、ガード、アクション、状態変数を持つ拡張状態機械です。
+人が読み書きするMarkdown仕様を中間表現へ変換し、モデルチェッカーが読める形式へ落とします。
+
+```mermaid
+%%{init: {"theme": "dark"}}%%
+flowchart LR
+    Human["人が仕様を書く"]
+    Skill["Codex<br/>spec-behavior skill"]
+    Spec["Markdown<br/>Mermaid + 定義表"]
+    IR["中間表現<br/>型付きAST + 補助情報"]
+    TLA["TLA+"]
+    CSP["CSPm"]
+    TLC["TLC<br/>状態空間を探索"]
+    FDR["FDR4<br/>詳細化関係などを検査"]
+
+    Human --> Spec
+    Skill -. "作成とレビューを支援" .-> Spec
+    Spec --> IR
+    IR --> TLA --> TLC
+    IR --> CSP --> FDR
 ```
-mermaid spec.md  →  AST + side tables  →  TLA+  →  TLC (deadlock-free / liveness check)
-                                       ↘  CSPm  →  FDR4 (archive backend)
+
+遷移ラベルはUMLの`event [guard] / action`という順序で書きます。
+次の例では、`submit(item_count)`を受け取り、`has_items`が成立した場合に`accept_submission`を行って審査中へ移ります。
+
+```mermaid
+stateDiagram-v2
+%%{init: {"theme": "dark"}}%%
+    state "提出前" as Draft
+    state "審査中" as Reviewing
+    state "承認" as Approved
+
+    [*] --> Draft
+    Draft --> Reviewing : submit(item_count) [has_items] / accept_submission
+    Reviewing --> Approved : review_passed / approve_request
+    Approved --> [*]
 ```
 
-## Status
+### ガード定義
 
-Functional. The parser covers the `spec-behavior` Mermaid subset; both backends emit composite /
-orthogonal regions, event payload binding, guard substitution, and state variable threading.
-Validation pass V001-V007 flags common spec mistakes (`--strict` promotes warnings to failures).
-Liveness / fairness verification via a `### Liveness` markdown table (TLA+ `<>Terminated` etc. +
-`WF_vars(Next)` fairness assumption). specforge verifies its own `docs/behavior.md` via TLC for both
-deadlock-freeness and termination (self-dogfood).
+| Guard ID    | 条件             |
+| ----------- | ---------------- |
+| `has_items` | `item_count > 0` |
 
-If you are new, start with [`docs/concepts.md`](./docs/concepts.md) for the theoretical background
-and how the tool connects the human-readable spec layer to TLA+ / TLC verification.
+### 共有状態
 
-Remaining work is enumerated in [`tasks/todo.md`](./tasks/todo.md) with priority and size
-annotations.
+| 変数         | 型           | 初期値 |
+| ------------ | ------------ | ------ |
+| `item_count` | int（0以上） | 0      |
 
-## Setup
+### イベント一覧
 
-開発環境は次の 3 通りで用意できる。
+| イベント        | ペイロード     |
+| --------------- | -------------- |
+| `submit`        | `{item_count}` |
+| `review_passed` | なし           |
 
-### Nix flake (推奨、再現性最高)
+Mermaidブロックの後ろには、ガード定義、共有状態、イベントペイロード、ライブネス性質などの表を置けます。
+specforgeは図と表を合わせて読み込み、構文検査、静的バリデーション、TLA+またはCSPmへの変換を行います。
+
+TLA+とTLCが現在の主バックエンドです。 CSPmとFDR4は副バックエンドとして扱っています。
+
+## ビルドして使う
+
+### 必要なもの
+
+TLA+やCSPmへの変換だけを行う場合は、Deno 2.xが必要です。
+`specforge verify`でTLCを実行する場合は、Javaと`tla2tools.jar`も必要です。
+
+### リポジトリから実行ファイルを作る
+
+リポジトリをクローンし、`deno task compile`を実行します。
 
 ```bash
-nix develop
+git clone https://github.com/daikichiba9511/specforge.git
+cd specforge
+deno task compile
 ```
 
-Deno 2 / OpenJDK 21 / `tla2tools.jar` (v1.7.4) が揃った shell に入る。`SPECFORGE_TLA_JAR` と
-`JAVA_HOME` も自動で設定されるので `deno task verify` がそのまま動く。
-
-### mise
+ビルドが成功すると、実行した環境向けの実行ファイルが`bin/specforge`に生成されます。
+Denoランタイムは実行ファイルに組み込まれるため、ビルド後の通常利用では`deno task cli`を経由する必要はありません。
 
 ```bash
-mise install
+./bin/specforge --json --strict examples/vending-machine.md
+./bin/specforge --tla --bound=3 examples/vending-machine.md
 ```
 
-Deno 2 と OpenJDK 21 が入る (`mise.toml` で pin)。`verify` を使う場合は別途 `tla2tools.jar`
-を配置する:
+継続して使う場合は、`bin/specforge`を任意の`PATH`配下へコピーするか、`bin`ディレクトリを`PATH`へ追加してください。
+以降の例では、`specforge`として実行できる状態を前提にします。
+
+### TLCを使えるようにする
+
+Javaをインストールし、TLA+ Toolsの`tla2tools.jar`を配置します。
+macOSでHomebrewを使う場合は、次のように準備できます。
 
 ```bash
+brew install openjdk
 mkdir -p ~/.local/share/specforge
 curl -L -o ~/.local/share/specforge/tla2tools.jar \
   https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
 ```
 
-`SPECFORGE_TLA_JAR` env var で任意のパスを指定することもできる。
-
-### 手動
-
-`brew install deno openjdk` などで Deno と OpenJDK を入れ、`tla2tools.jar` は上記 mise 節と
-同じ手順で配置する。詳細は [`CLAUDE.md`](./CLAUDE.md) の `verify の前提` 節。
-
-## Quickstart
+別の場所にjarを置く場合は、`SPECFORGE_TLA_JAR`でパスを指定できます。
 
 ```bash
-deno task test
-deno task cli examples/vending-machine.md               # CSPm output (default)
-deno task cli --tla examples/vending-machine.md         # TLA+ output
-deno task verify --bound=3 examples/vending-machine.md  # verify deadlock-freeness with TLC
+export SPECFORGE_TLA_JAR=/path/to/tla2tools.jar
 ```
 
-## Tech stack
+Nixを使う場合は、`nix develop`でDeno、OpenJDK、`tla2tools.jar`、必要な環境変数が揃ったシェルへ入れます。
 
-Deno 2.x runtime, TypeScript native, zero third-party dependencies in the parser / codegen core.
-Source is runtime-neutral (`node:` prefix imports) so it also runs on Bun / Node for dev iteration.
-Tests: `deno test` + `jsr:@std/assert`.
+## 振る舞い仕様を変換して検証する
 
-## Docs
+### 構文と中間表現を確認する
 
-- [`docs/concepts.md`](./docs/concepts.md) — primer: state machines, CSP / TLA+ basics, what the
-  tool connects, and what TLC can verify (start here if you are new)
-- [`docs/spec.md`](./docs/spec.md) — input language contract (Mermaid subset / BNF / transition
-  label format / side artifacts / TLA+ + CSPm conversion semantics)
-- [`docs/behavior.md`](./docs/behavior.md) — specforge's own runtime behavior, written as a
-  `spec-behavior`-style state machine (self-dogfood verification target)
-- [`docs/perf.md`](./docs/perf.md) — bench (`deno task bench`) workflow, before/after comparison,
-  CPU profiling
-- [`docs/decisions.md`](./docs/decisions.md) — design decision records and open questions
-- [`examples/README.md`](./examples/README.md) — 8 worked examples (vending machine / DB pool /
-  producer-consumer / order workflow / internal events / deadlock / unreachable demos)
-- [`tasks/todo.md`](./tasks/todo.md) — remaining backlog with priority / size annotations
+`--json`は、構文解析した状態機械とMarkdownから抽出した補助情報をJSONで出力します。
+`--strict`を付けると、V001からV007までのバリデーションの指摘を警告で終わらせず、終了コード1の失敗として扱います。
 
-## Develop
+```bash
+specforge --json --strict path/to/spec.md
+```
 
-See [`CLAUDE.md`](./CLAUDE.md) for the development context, recommended workflow skills, and useful
-commands.
+仕様を作成した直後は、まずこのコマンドで構文と静的な不整合を確認してください。
+
+### TLA+を生成する
+
+`--tla`を付けると、TLA+モジュールを標準出力へ生成します。
+
+```bash
+specforge --tla --bound=3 path/to/spec.md > Spec.tla
+```
+
+`--bound=N`は、状態変数を有限化する`Domain == 0..N`の上限です。
+ガードの境界値へ到達できる最小値から始め、検証したい範囲に合わせて広げます。
+
+### TLCまで実行する
+
+`verify`は、Markdown仕様の読み込み、TLA+生成、TLCによるモデル検査を一続きに実行します。
+
+```bash
+specforge verify --strict --bound=3 path/to/spec.md
+```
+
+成功時は`verified ok`とTLCの探索結果を表示します。
+ライブネス性質を宣言した仕様では、デッドロック検査と合わせて時間的性質も検査します。
+
+```text
+verified ok
+
+Model checking completed. No error has been found.
+```
+
+### CSPmを生成する
+
+出力形式を指定しない場合はCSPmを標準出力へ生成します。
+
+```bash
+specforge path/to/spec.md > Spec.csp
+```
+
+FDR4による検証は現在のCLIから自動実行しません。
+
+## Codexのspec-behavior skillと使う
+
+このリポジトリには、振る舞い仕様の作成とレビューを支援するリポジトリ内skillを同梱しています。
+Codexでこのリポジトリを開くと、[`.agents/skills/spec-behavior`](./.agents/skills/spec-behavior)が検出されます。
+
+skillには二つの利用モードがあります。
+
+- **writeモード**：対象の境界を決め、正常系と異常系を含む新しい振る舞い仕様を作る。
+- **reviewモード**：既存仕様の構文、状態遷移、未定義イベント、ガード、設計メモを検査する。
+
+新しい仕様を作る場合は、保存先と検証まで行うことをプロンプトに含めます。
+
+```text
+$spec-behavior writeモードで注文ワークフローの振る舞い仕様を
+specs/order-workflow.mdに作成し、specforgeのstrictバリデーションとTLC検証まで実行して
+```
+
+既存仕様を確認する場合は、reviewモードを明示します。
+
+```text
+$spec-behavior reviewモードでexamples/order-workflow.mdをレビューし、
+specforge --json --strictとTLC検証の結果を報告して
+```
+
+skillは仕様を作成する規律を提供し、specforgeはその仕様を機械的に変換して検査します。
+両者の役割は次のように分かれます。
+
+```mermaid
+%%{init: {"theme": "dark"}}%%
+flowchart TB
+    Request["対象となる振る舞い"]
+    Authoring["spec-behavior skill<br/>境界、状態、異常系、設計メモを整理"]
+    Document["specforge互換のMarkdown仕様"]
+    Validation["specforge<br/>構文解析 + バリデーション"]
+    Model["TLA+モデル"]
+    Check["TLC<br/>デッドロックとライブネスを検査"]
+
+    Request --> Authoring --> Document --> Validation --> Model --> Check
+```
+
+skillが参照する詳しい執筆規則は[振る舞い仕様の書き方](./docs/writing-specs.md)にあります。
+構文解析器とコード生成器が受理する厳密な入力契約は[specforge入力仕様](./docs/spec.md)が正準です。
+
+## specforge自体を開発する
+
+ここまでの節は、ビルド済みのspecforgeを利用する人を対象としています。
+この節は、構文解析、バリデーション、コード生成、CLIを変更する開発者向けです。
+
+### 開発環境
+
+再現性のある開発環境にはNix flakeを使えます。
+
+```bash
+nix develop
+```
+
+Deno 2、OpenJDK 21、`tla2tools.jar`が揃い、`SPECFORGE_TLA_JAR`と`JAVA_HOME`も設定されます。
+
+miseを使う場合は、Deno 2とOpenJDK 21を`mise.toml`の定義に従って導入します。
+TLCを使う場合は、前述の手順で`tla2tools.jar`を別途配置してください。
+
+```bash
+mise install
+```
+
+手動で構築する場合は、Deno 2とOpenJDK 21をインストールしてください。
+
+### 開発用コマンド
+
+```bash
+deno task test       # テスト
+deno task fmt        # フォーマット
+deno task lint       # lint
+deno task check      # 型検査
+
+deno task cli --json --strict examples/vending-machine.md
+deno task cli --tla --bound=3 examples/vending-machine.md
+deno task verify --strict --bound=3 examples/vending-machine.md
+
+deno task compile    # bin/specforgeを生成
+deno task bench      # ベンチマーク
+```
+
+複数モジュールにまたがる変更へ着手する前に、[AGENTS.md](./AGENTS.md)で現在の設計文脈、正準ドキュメント、残タスクを確認してください。
+具体的な残タスクは[tasks/todo.md](./tasks/todo.md)で管理しています。
+
+## 現在の対応範囲
+
+構文解析器は、spec-behavior skillが生成するMermaidサブセットだけを受理します。
+サブセット外のMermaid記法は曖昧に解釈せず、構文解析時に拒絶します。
+
+現在は次の要素に対応しています。
+
+- 複合状態と完了遷移
+- 直交領域
+- `event [guard] / action`形式の遷移ラベル
+- イベントペイロードと状態変数の束縛
+- ガード定義の置換
+- V001からV007までのバリデーション
+- `### Liveness`表からTLA+の性質への変換
+- `WF_vars(Next)`による弱公平性
+- `specforge verify`からのTLC実行
+
+specforgeが検査する対象は、Mermaidと補助表で定義した拡張状態機械モデルです。
+モデルに含めていない性質は検査対象になりません。
+現在の変換セマンティクスと既知の境界は[specforge入力仕様](./docs/spec.md)を参照してください。
+
+## ドキュメント
+
+- [振る舞い仕様とは何か](./docs/behavior-specs.md)：振る舞い仕様の対象、境界、完全性、形式検証との関係
+- [振る舞い仕様の書き方](./docs/writing-specs.md)：状態、イベント、ガード、アクション、補助表、設計メモの書き方
+- [基本概念](./docs/concepts.md)：拡張状態機械、CSP、TLA+、安全性、ライブネス、公平性の解説
+- [specforge入力仕様](./docs/spec.md)：Mermaidサブセット、文法、補助情報、変換セマンティクス
+- [遷移ラベルの読み方](./docs/label-reading.md)：`event [guard] / action`の解釈
+- [specforge自身の振る舞い仕様](./docs/behavior.md)：自己適用としてTLC検証している仕様
+- [サンプル集](./examples/README.md)：正常例と反例を含む実行可能な例
+- [性能計測](./docs/perf.md)：ベンチマークとCPUプロファイルの取得方法
+- [設計判断](./docs/decisions.md)：採用済みの判断と未決事項
+- [残タスク](./tasks/todo.md)：優先度と規模を付けたバックログ
+
+## 技術構成
+
+- Deno 2.x
+- TypeScript
+- TLA+とTLCを主バックエンドとして使用
+- CSPmとFDR4を副バックエンドとして使用
+- 構文解析器とコード生成器の中核は外部依存なし
+- テストは`deno test`と`jsr:@std/assert`を使用

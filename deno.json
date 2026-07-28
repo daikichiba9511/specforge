@@ -1,7 +1,7 @@
 {
     "tasks": {
-        "test": "deno test",
-        "fmt": "deno fmt",
+        "test": "deno test --allow-read=.agents/skills,docs",
+        "fmt": "deno fmt --ignore=.agents/skills/spec-behavior-workspace",
         "lint": "deno lint",
         "check": "deno check src/**/*.ts tests/**/*.ts bench/**/*.ts",
         "cli": "deno run --allow-read --allow-write --allow-env --allow-run --allow-sys src/cli.ts",

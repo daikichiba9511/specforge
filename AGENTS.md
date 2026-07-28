@@ -21,13 +21,17 @@ Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)   →  deadlock-f
 
 ## Why this exists
 
-`~/.Codex/skills/spec-behavior/SKILL.md` が書く Mermaid 状態機械は既に CSP-translatable な
-規律を持つ (UML `event [guard] / action`、 関数形式 `name(arg1, arg2)`、 イベント契約表、 直交領域、
-冪等性 / 未定義イベント宣言など)。 specforge はそれを **機械的に TLA+ / CSPm に 変換する** 部品で、
+`.agents/skills/spec-behavior/SKILL.md` が書く Mermaid 状態機械は既に CSP-translatable な 規律を持つ
+(UML `event [guard] / action`、 関数形式 `name(arg1, arg2)`、 イベント契約表、 直交領域、 冪等性 /
+未定義イベント宣言など)。 specforge はそれを **機械的に TLA+ / CSPm に 変換する** 部品で、
 形式検証側を「ボタン一発」にする。 `specforge verify` で TLC まで一気通貫。
 
 ## Canonical docs
 
+- **[`docs/behavior-specs.md`](./docs/behavior-specs.md)** — 振る舞い仕様の目的、境界、完全性、
+  合成、形式検証との関係
+- **[`docs/writing-specs.md`](./docs/writing-specs.md)** — specforge 互換仕様の作成手順、表、
+  設計メモ、validation、verify
 - **[`docs/concepts.md`](./docs/concepts.md)** — 基本概念と背景 (拡張状態機械 / CSP / TLA+ / safety
   vs liveness / fairness / 検証できること & できないこと)。 新規ユーザはまずこれを読む
 - **[`docs/spec.md`](./docs/spec.md)** — 入力言語契約 (Mermaid サブセット / BNF / 遷移ラベル /
@@ -96,19 +100,23 @@ deno task bench:compare /tmp/before.json /tmp/after.json   # compare two `deno b
   `~/.local/share/specforge/tla2tools.jar` に配置 (もしくは `SPECFORGE_TLA_JAR` env var で上書き)
 - TLA+ module 名は `Spec` 固定 (一時ファイルが `Spec.tla` / `Spec.cfg`)
 
-## Key references (in dotfiles / outside repo)
+## Key references
 
-- **`~/.Codex/skills/spec-behavior/SKILL.md`** — specforge が受理する spec 言語の定義 (specforge は
-  これに追従する)
-- **`~/.Codex/skills/spec-behavior/references/multi-entity-composition.md`** — multi-entity /
-  refinement / impl 分離パターン (multi-state-machine specs に拡張する時に効く)
+- **[`.agents/skills/spec-behavior/SKILL.md`](./.agents/skills/spec-behavior/SKILL.md)** — specforge
+  互換 spec を作成、レビュー、検証する repo-local skill
+- **[`.agents/skills/spec-behavior/references/behavior-spec-guide.md`](./.agents/skills/spec-behavior/references/behavior-spec-guide.md)**
+  — 振る舞い仕様を書く側の規律 (specforge は これに追従する)
+- **[`.agents/skills/spec-behavior/references/multi-entity-composition.md`](./.agents/skills/spec-behavior/references/multi-entity-composition.md)**
+  — multi-entity / refinement / impl 分離パターン (multi-state-machine specs に拡張する時に効く)
 - **Real-world example spec**: `~/job/docs/tasks/active/hitl-evaluation-system-phase-flow-spec.md` —
   composite + 直交領域 + multi-entity coverage の現実 spec (機密、 local 保持)
 
 ## Next session — recommended first step
 
-まず [`docs/spec.md`](./docs/spec.md) を読んで入力契約を把握する。 AGENTS.md (本ファイル) は
-プロジェクト文脈の wrapper で、 spec.md が正準入力契約。
+仕様を書く場合は [`docs/behavior-specs.md`](./docs/behavior-specs.md) と
+[`docs/writing-specs.md`](./docs/writing-specs.md) を読み、実装を変更する場合は
+[`docs/spec.md`](./docs/spec.md) の入力契約を把握する。 AGENTS.md (本ファイル) はプロジェクト文脈の
+wrapper で、構文と変換 semantics については spec.md が正準入力契約。
 
 具体的な残タスクは [`tasks/todo.md`](./tasks/todo.md) に Pri (A/B/C) + Size (S/M/L) 付きで
 列挙してある。 再開時は Pri A、 Size S から拾うのが手軽。

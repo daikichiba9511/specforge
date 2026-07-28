@@ -206,9 +206,10 @@ deadlock-free)。 self-dogfood として spec-behavior → specforge → TLA+ �
 
 - [`./spec.md`](./spec.md) — specforge 入力言語契約 (Mermaid サブセット / BNF / CSPm
   変換セマンティクス)
-- `~/.claude/skills/spec-behavior/SKILL.md` — 本 doc の記述に用いた振る舞い仕様の規律
-- `~/.claude/skills/spec-behavior/references/multi-entity-composition.md` — multi-entity /
-  refinement / impl 分離パターン (現状の本 spec では未使用)
+- [spec-behavior skill](../.agents/skills/spec-behavior/SKILL.md) — 本 doc
+  の記述に用いた振る舞い仕様の規律
+- [multi-entity composition guide](../.agents/skills/spec-behavior/references/multi-entity-composition.md)
+  — multi-entity / refinement / impl 分離パターン (現状の本 spec では未使用)
 
 ## 変更履歴
 
