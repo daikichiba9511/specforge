@@ -1,0 +1,57 @@
+---
+name: spec-behavior
+description: "Author and review behavior specifications using tables and Mermaid extended state machines, then validate and verify specforge-compatible specs. Use when the user wants a behavior spec, state machine, Mermaid spec, or asks to review or lint one. Trigger on phrases such as '振る舞い仕様を書きたい', '状態機械を書きたい', 'Mermaidで仕様', 'この仕様をレビューして', and 'specforgeで検証して'."
+---
+
+# Spec Behavior
+
+振る舞い仕様の作成とレビューを支援する。 変換系は表、リアクティブ系は Mermaid
+拡張状態機械で書き分ける。
+
+仕様を書く前、またはレビューする前に、必ず `references/behavior-spec-guide.md` を読む。
+複数のサブシステム、refinement、実装詳細との分離を扱う場合は、`references/multi-entity-composition.md`
+も読む。 specforge と同じリポジトリで作業する場合、または specforge
+で検証する場合は、`references/specforge-workflow.md` も読む。
+
+## Mode
+
+最初に次のどちらかのモードを選ぶ。
+
+- **write**：振る舞い仕様の新規作成、下書き、修正を依頼された場合
+- **review**：既存仕様のレビュー、検査、lint、形式検証を依頼された場合
+
+依頼内容から判定できない場合だけ、対象と期待する成果物を一つの短い質問で確認する。
+
+## Write Workflow
+
+1. 対象となる振る舞い、ドメイン境界、抽象度、保存先を特定する。
+2. 変換系、リアクティブ系、混合系のどれかに分類する。
+3. ガイドに従って正常系と異常系を同じ精度で記述する。
+4. 状態、イベント、ガード、アクション、共有状態の表を必要に応じて追加する。
+5. 設計メモに省略方針、未定義イベント、冪等性、既知の未対応ケースを書く。
+6. ガイドの self-check を実行する。
+7. specforge 対象なら構文検査、strict validation、必要に応じて TLC 検証を実行する。
+
+保存先が明示されていない場合は、既存の文書配置から妥当なパスを選べるときだけ選び、それ以外は保存前に確認する。
+
+## Review Workflow
+
+1. 対象ファイルと、その仕様が表すドメイン境界を確認する。
+2. ガイドの mechanical checks を先に実行する。
+3. semantic checks と設計メモの完全性を確認する。
+4. specforge 対象なら parser、validation、要求された形式検証を実行する。
+5. finding を error、warning、info の順に報告する。
+6. 各 finding に元ファイルの行番号、現状、影響、具体的な修正案を含める。
+
+review モードでは、ユーザーが修正も依頼していない限り対象ファイルを編集しない。
+
+## Rules
+
+- 入力だけで出力が決まる変換は表で書く。
+- 状態、履歴、モード、並列性に依存する振る舞いは Mermaid `stateDiagram-v2` で書く。
+- 遷移ラベルは `event [guard] / action` の順にする。
+- 直交領域への同時通知は、各領域に同名イベントを書いて表す。
+- 状態の直積を列挙せず、禁止状態、遷移制限、モード依存で分解する。
+- 未定義の状態とイベントの組は、個別遷移または既定規則で扱いを確定する。
+- 振る舞い仕様には通信特性を書くが、実装上のミドルウェア名は持ち込まない。
+- specforge の変換成功と、要求に対する仕様の妥当性を区別する。

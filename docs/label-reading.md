@@ -289,7 +289,9 @@ specforge の `/ action` は完了遷移 (event 省略) のラベル省略形を
 ## 10. もっと知りたいとき
 
 - UML state machine 仕様: OMG UML 2.5、 https://www.omg.org/spec/UML/
-- spec-behavior skill: `~/.claude/skills/spec-behavior/SKILL.md` (本リポジトリ外の dotfiles)
+- [spec-behavior skill](../.agents/skills/spec-behavior/SKILL.md) — 本リポジトリ同梱の作成、review
+  workflow
+- [`./writing-specs.md`](./writing-specs.md) — 仕様全体の作成手順
 - [`./spec.md`](./spec.md) §4 — specforge の正準文法
 - [`./csp-reading.md`](./csp-reading.md) — 変換先 (CSPm) の読み方
 - [`./concepts.md`](./concepts.md) — 全体の theoretical 背景

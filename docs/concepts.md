@@ -53,8 +53,8 @@ CSPm) に変換することで、 「人が書きやすい層」と「機械が�
 
 ### 2.3 spec-behavior の規律
 
-`~/.claude/skills/spec-behavior/SKILL.md` の規律で書かれた spec は、 形式検証に変換しやすい
-形をしている:
+本リポジトリの [spec-behavior skill](../.agents/skills/spec-behavior/SKILL.md) の規律で書かれた spec
+は、 形式検証に変換しやすい 形をしている:
 
 | 要素              | 規律                                           | 機械検証への寄与                                  |
 | ----------------- | ---------------------------------------------- | ------------------------------------------------- |
@@ -379,6 +379,8 @@ specforge は「形式検証への入り口」を低くするツールで、 形
 
 ### 本リポジトリ内の関連 doc
 
+- [`./behavior-specs.md`](./behavior-specs.md) — 振る舞い仕様の目的、境界、完全性、合成
+- [`./writing-specs.md`](./writing-specs.md) — specforge 互換仕様の作成手順
 - [`./label-reading.md`](./label-reading.md) — `event [guard] / action` ラベルの読み方 (UML 慣習、
   省略パターン、 実行順序)
 - [`./csp-reading.md`](./csp-reading.md) — CSP / CSPm の読み方 (演算子、 合成、 同期、 specforge

@@ -60,6 +60,8 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
 
 ### CSPm 側の磨き込み
 
+- [ ] **直交領域の broadcast 同期**: 同名 event を持つ region を CSPm の `[| S |]` で同期し、 TLA+
+      でも一つの step で対象 region を同時更新する。現状は両 backend とも interleaving
 - [ ] **`internal_*` の hiding 対応** (CSPm): `Spec = Initial \ {internal_check_lockout, ...}`
       の形で trace から hide。 TLA+ には対応する概念無いので CSPm only
 - [ ] **FDR4 で実機検証**: FDR4 を手動 install してから、 hitl spec / 各 example の CSPm 出力を FDR4
@@ -122,3 +124,5 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
       order-workflow / internal-events / deadlock (TLC 検出) / unreachable-state (V004 検出)
 - [x] bench 基盤 + `docs/perf.md` (Deno.bench + before/after 比較)
 - [x] CI workflow (deno fmt / lint / check / test)
+- [x] 振る舞い仕様の概念 doc + specforge 向け執筆 guide + repo-local `spec-behavior` skill を同梱。
+      skill 内の Mermaid 例と執筆 guide の完全例を test で parser / validation に同期
