@@ -120,8 +120,9 @@ CLAUDE.md の Pending を展開した実作業リスト。優先度別 (Pri) と
 - [x] Validation pass V001〜V007 + `--strict` flag
 - [x] `--json` output mode
 - [x] Self-dogfood: `docs/behavior.md` 自身を TLC で verified ok
-- [x] examples 8 例: traffic-light / vending-machine / db-connection-pool / producer-consumer /
-      order-workflow / internal-events / deadlock (TLC 検出) / unreachable-state (V004 検出)
+- [x] examples 10 例: traffic-light / vending-machine / db-connection-pool / producer-consumer /
+      order-workflow / internal-events / parallel-order-retry / parallel-order-retry-fixed /
+      deadlock (TLC 検出) / unreachable-state (V004 検出)
 - [x] bench 基盤 + `docs/perf.md` (Deno.bench + before/after 比較)
 - [x] CI workflow (deno fmt / lint / check / test)
 - [x] 振る舞い仕様の概念 doc + specforge 向け執筆 guide + repo-local `spec-behavior` skill を同梱。
