@@ -5,6 +5,9 @@
 dist/
 bin/
 
+# Local skill evaluation artifacts
+.agents/skills/spec-behavior-workspace/
+
 # OS
 .DS_Store
 

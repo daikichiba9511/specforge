@@ -1,0 +1,19 @@
+{
+    "skill_name": "spec-behavior",
+    "evals": [
+        {
+            "id": 1,
+            "prompt": "社内申請の受付から終了までを表す、単一エンティティの振る舞い仕様を新規作成してください。申請は item_count を持つ submit event で受け付けます。item_count が正なら審査へ進み、0なら却下します。審査中は review_passed または review_failed を受け付け、提出前は cancel できます。承認、却下、取消は終了状態です。正常系と異常系、未定義event、actionの冪等性を扱い、最終的にいずれかの終了状態へ到達するliveness propertyも宣言してください。成果物を指定されたoutputsディレクトリの approval-request.md に保存し、specforgeでstrict validation、bound=3のTLA+変換、TLC検証を実行してください。生成TLA+をSpec.tla、各commandとexit codeとTLC結果をverification.txtへ保存してください。最後に、検証できた性質と現在のspecforgeでは検証できない性質を区別してください。リポジトリの他のファイルは変更しないでください。",
+            "expected_output": "spec-behavior規律に従う新規Markdown仕様、specforgeが生成したTLA+、strict validationとTLCの実行証跡。TLCがdeadlock-freeとterminationを確認し、action semanticsなどの検証境界を正確に報告する。",
+            "files": [],
+            "expectations": [
+                "approval-request.md contains a parseable Mermaid stateDiagram-v2 with submit(item_count), review_passed, review_failed, and cancel paths",
+                "approval-request.md contains event, action, guard, shared-state, liveness, and design-notes sections",
+                "The guard table defines positive and zero item_count branches without undeclared identifiers",
+                "specforge strict validation exits successfully with no V001-V007 issues",
+                "Spec.tla is generated with Domain 0..3, item_count, Fairness, Terminated, and a termination property",
+                "TLC exits successfully and reports that no error was found"
+            ]
+        }
+    ]
+}
