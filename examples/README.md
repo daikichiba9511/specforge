@@ -1,91 +1,78 @@
-# specforge examples
+# specforgeのサンプル
 
-[spec-behavior skill](../.agents/skills/spec-behavior/SKILL.md)の規則に従って書かれた振る舞い仕様のサンプル。
-specforgeの機能を段階的に確認できる、正しく書けた7例と意図的に問題を残した3例を収録している。
-`traffic-light.mmd`を除く検証対象の正常例はTLCで検証し、問題を残した例は静的検査、デッドロック検査、進行性検査で問題を発見する流れを実演する。
+このディレクトリには、[spec-behavior skill](../.agents/skills/spec-behavior/SKILL.md)の規則に従った振る舞い仕様を収録している。
+正しく書けた7例と、意図的に問題を残した3例があり、構文解析、静的検査、TLCによるモデル検査を段階的に試せる。
 
-## 例の一覧
+表中の「生成状態数」はTLCが遷移中に生成した状態の総数、「異なる状態数」は重複を除いた状態数である。
 
-### 正しく書けた例 (verified ok)
+## 正しく書けた例
 
-| 例                                                                 | 規模   | カバー機能                                                                | 検証結果 (bound=3)            |
-| ------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------- | ----------------------------- |
-| [`traffic-light.mmd`](./traffic-light.mmd)                         | 最小   | flat states + ガード (辞書無しで warn 3 件、教育用)                       | (`.mmd` 形式、TLC 用ではない) |
-| [`vending-machine.md`](./vending-machine.md)                       | 小     | linear pipeline + 1 state var + payload binding                           | 42 / 14 distinct              |
-| [`db-connection-pool.md`](./db-connection-pool.md)                 | 中     | 複数 state var + 複数 payload event + retry / shutdown 分岐               | 218 / 47 distinct             |
-| [`producer-consumer.md`](./producer-consumer.md)                   | 小〜中 | composite + **直交領域** (Producer / Consumer 並行) + 完了/triggered exit | 211 / 68 (bound=2)            |
-| [`order-workflow.md`](./order-workflow.md)                         | 大     | composite + 直交領域 + 複数 state var + payload + retry + 多経路          | 2744 / 512 distinct           |
-| [`internal-events.md`](./internal-events.md)                       | 小     | `internal_xxx` 命名規約 + state var + payload binding                     | 35 / 10 distinct              |
-| [`parallel-order-retry-fixed.md`](./parallel-order-retry-fixed.md) | 中     | 決済と在庫確保の並行処理 + 有限回の再試行 + 進行性                        | 31 / 16 distinct              |
+| 例                                                               | 規模   | 主に確認できる機能                                   | TLCの結果                |
+| ---------------------------------------------------------------- | ------ | ---------------------------------------------------- | ------------------------ |
+| [traffic-light.mmd](./traffic-light.mmd)                         | 最小   | 単純な状態とガード。補助表のない`.mmd`入力           | TLC検査用ではない        |
+| [vending-machine.md](./vending-machine.md)                       | 小     | 一つの状態変数とイベントのペイロード                 | 42生成、14種類           |
+| [db-connection-pool.md](./db-connection-pool.md)                 | 中     | 複数の状態変数、境界条件、再試行、停止分岐           | 218生成、47種類          |
+| [producer-consumer.md](./producer-consumer.md)                   | 小〜中 | 生産側と消費側の直交領域、完了遷移、途中退出         | 211生成、68種類（上限2） |
+| [order-workflow.md](./order-workflow.md)                         | 大     | 階層状態、直交領域、状態変数、再試行、複数の終了経路 | 2744生成、512種類        |
+| [internal-events.md](./internal-events.md)                       | 小     | `internal_`命名規則と状態変数                        | 35生成、10種類           |
+| [parallel-order-retry-fixed.md](./parallel-order-retry-fixed.md) | 中     | 決済と在庫確保の並行処理、有限回の再試行、進行性     | 31生成、16種類           |
 
-### 意図的に問題のある例 (specforge / TLC の検出機能を実演)
+## 意図的に問題を残した例
 
-| 例                                                     | 何を実演するか                                                     | 期待される挙動                                            |
-| ------------------------------------------------------ | ------------------------------------------------------------------ | --------------------------------------------------------- |
-| [`parallel-order-retry.md`](./parallel-order-retry.md) | 並行処理が動き続ける一方で、無制限の再試行によって終了しない       | 静的検査は成功し、TLCの進行性検査は失敗する               |
-| [`deadlock.md`](./deadlock.md)                         | 複合状態の内部に出口がないため、注文処理のような全体の完了を妨げる | 静的検査で出口の不足を指摘し、TLCもデッドロックを検出する |
-| [`unreachable-state.md`](./unreachable-state.md)       | 宣言されているが、どの遷移からも到達できない状態を検出する         | 静的検査で未到達状態を指摘し、TLCの検査自体は成功する     |
+| 例                                                   | 問題                                           | 期待する検出結果                                        |
+| ---------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------- |
+| [parallel-order-retry.md](./parallel-order-retry.md) | 決済を無制限に再試行でき、処理が終了しない     | 静的検査は成功し、TLCの進行性検査は失敗する             |
+| [deadlock.md](./deadlock.md)                         | 複合状態の内部に出口がなく、全体が完了できない | 静的検査が出口不足を指摘し、TLCもデッドロックを検出する |
+| [unreachable-state.md](./unreachable-state.md)       | 宣言した状態へ入る遷移がない                   | 静的検査が未到達状態を指摘し、TLCの検査自体は成功する   |
 
-## 各例の使い分け
+## 最初に読む例
 
-- **vending-machine**: specforge を初めて使う人がまず見る例。 markdown 表 → 生成 CSPm/TLA+ の
-  対応関係が短い spec で追える。`balance > 0` の guard が payload binding で動的に評価される ことを
-  TLC 出力で確認できる
-- **db-connection-pool**: 複数 state var + ガード境界条件 (`under_limit` / `at_limit` / `empty`)
-  を含むリソース管理パターン。 `--bound` を上げると状態空間がどう増えるか実感しやすい
-- **producer-consumer**: composite + 直交領域の最小例。 Producer と Consumer が独立に進行し、 両方が
-  `[*]` に到達した時点で `Drained` に遷移する **completion** と、いずれかの failure で 即 `Aborted`
-  に抜ける **triggered exit** が同居する。 TLA+ 出力の `<comp>_r0` / `<comp>_r1` region
-  変数の挙動が観察できる
-- **parallel-order-retry / parallel-order-retry-fixed**:
-  決済と在庫確保を並行して進める注文処理を使い、
-  無制限の再試行による進行性違反と、再試行回数を状態として制限した修正を比較する。
-  静的検査では問題がなくてもTLCが終了しない実行を発見できることを確認できる
-- **order-workflow**: 全機能を組み合わせたリアルなサンプル。 EC サイトの注文ライフサイクル (Cart →
-  Checkout → Confirmed → Shipped → Delivered / Cancelled / Returned) を retry / 並行 処理 /
-  異常系も含めて書いた。 spec-behavior skill の review モードで lint するときの 練習対象としても
-- **internal-events**: `internal_xxx` 命名規約のデモ。 外部 (ユーザ/管理者) からのトリガーと、
-  内部状態の検査による自発発火を命名で区別する。 ロックアウト検出を例に使用。 現状 specforge は
-  internal 接頭辞を特別扱いしない (CSPm の hiding は Pending)
-- **deadlock**: composite region 内に `[*]` への経路がない state を入れて、 region が完了 でき ない
-  → 全 region `_done` を要求する完了遷移が永遠に発火不能 → TLC が deadlock 検出。 「forgotten error
-  recovery」のアンチパターン
-- **unreachable-state**: 宣言だけ存在して誰からも到達されない state を含む。 specforge の静的検査
-  で警告が出る。 TLC は到達不能な state を見ないので verify 自体は通る ことが「TLC
-  と静的解析が補完関係にある」ことを示すデモ
+初めて使う場合は、[vending-machine.md](./vending-machine.md)から始める。
+短い状態機械の中で、イベントと一緒に受け取った残高がガードで評価され、次の状態へ引き継がれる様子を確認できる。
 
-## 実行例
+次に、[parallel-order-retry.md](./parallel-order-retry.md)と[parallel-order-retry-fixed.md](./parallel-order-retry-fixed.md)を比較するとよい。
+前者では決済中と再試行中を無制限に往復できるため、処理が動き続けても終了しない。
+後者では再試行回数を有限にし、二回目のタイムアウト後に失敗として終了する。
+この比較によって、静的検査だけでは見つからない進行性違反をTLCが検出する役割を確認できる。
+
+並行処理の最小例は[producer-consumer.md](./producer-consumer.md)、複数の機能を組み合わせた例は[order-workflow.md](./order-workflow.md)である。
+内部イベントの命名規則は[internal-events.md](./internal-events.md)で確認できる。
+
+## 実行する
+
+リポジトリ内でDenoタスクを使う場合は、次のコマンドを実行する。
 
 ```bash
-# CSPm 出力 (デフォルト)
+# CSPmを生成する
 deno task cli examples/vending-machine.md
 
-# TLA+ 出力
+# TLA+を生成する
 deno task cli --tla examples/vending-machine.md
 
-# AST + metadata を JSON で
+# 抽象構文木と補助情報をJSONで表示する
 deno task cli --json examples/vending-machine.md
 
-# TLC で検証 (Domain = 0..3)
-deno task verify --bound=3 examples/vending-machine.md
+# 静的検査の警告を失敗として扱う
+deno task cli --json --strict examples/vending-machine.md
 
-# 静的検査の指摘を失敗として扱う
-deno task cli --strict examples/order-workflow.md
+# 状態変数の値域を0..3としてTLCで検査する
+deno task verify --strict --bound=3 examples/vending-machine.md
 ```
 
-## 検証結果の見方
+ビルド済みの`bin/specforge`をパスへ追加している場合は、`deno task cli`を`specforge`に、`deno task verify`を`specforge verify`に置き換える。
 
-`deno task verify` の最後に `Model checking completed. No error has been found.` が出れば
-deadlock-free 性が `--bound` で指定した値域の範囲で確認できたという意味。`states generated`
-(探索した遷移パスの総数) と `distinct states found` (実際の状態数) が `--bound` に応じて増える。
+## 検査結果を読む
 
-例えば order-workflow を bound 違いで動かすと:
+成功時は、次のような要約が出る。
 
-| `--bound` | states generated | distinct |
-| --------- | ---------------- | -------- |
-| 1         | 数十             | 数十     |
-| 3         | 2744             | 512      |
-| 5         | 数万             | 数千     |
+```text
+verified ok
 
-bound が大きいほど state var が取りうる値の組合せが増え、 retry 経路や境界条件をより網羅的
-に試せる。 ただし状態空間爆発に注意。
+42 states generated, 14 distinct states found, 0 states left on queue.
+```
+
+これは、指定した有限の値域と公平性の仮定の下で、生成したモデルに宣言済みの性質への反例が見つからなかったことを表す。
+実装が仕様に適合することや、アクション内部の副作用は検査していない。
+
+`--bound`を大きくすると状態変数が取り得る値の組合せが増える。
+ガードの境界値へ到達できる最小値から始め、探索状態数と検査時間を見ながら広げる。

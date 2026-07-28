@@ -1,8 +1,8 @@
-# specforge Workflow
+# specforgeを使う手順
 
 specforge と組み合わせて振る舞い仕様を作成し、レビューするための手順。
 
-## Source of Truth
+## 正準文書
 
 役割の異なる文書を混同しない。
 
@@ -16,7 +16,7 @@ specforge と組み合わせて振る舞い仕様を作成し、レビューす�
 仕様の分け方や不足ケースについて判断するときは `docs/behavior-specs.md` と
 `references/behavior-spec-guide.md` を使う。
 
-## Authoring
+## 仕様作成
 
 specforge に渡す仕様は Markdown の `.md` を基本とする。 生の `.mmd`
 ではガード定義、状態変数、イベント payload、liveness property を同じファイルに書けないためである。
@@ -28,12 +28,12 @@ specforge に渡す仕様は Markdown の `.md` を基本とする。 生の `.m
 3. 状態変数を使う場合は `### 共有状態` 表を書く。
 4. payload を使う場合は `### イベント契約` または `### イベント一覧` 表を書く。
 5. 設計メモを書く。
-6. termination などを検証する場合は `### Liveness` 表を書く。
+6. 終端到達などを検証する場合は`### 進行性`表を書く。
 
 イベント引数と payload field と状態変数を同じ名前にすると、specforge
 は受信した値を次の状態へ引き継げる。 同じ概念に別名を与えない。
 
-## Validation
+## 静的検査とモデル検査
 
 リポジトリ内で作業している場合は、保存後に次を実行する。
 
@@ -47,11 +47,11 @@ deno task cli --json --strict path/to/spec.md
 specforge --json --strict path/to/spec.md
 ```
 
-`--strict` は validation issue を失敗にする。 失敗した場合は issue ID
-と対象行を確認し、仕様の意図を保ったまま修正する。
+`--strict`は静的検査の指摘を失敗として扱う。
+失敗した場合は指摘IDと対象行を確認し、仕様の意図を保ったまま修正する。
 
-parser と validation が通っても、状態空間の性質はまだ検証されていない。 TLC
-が利用できる環境では次を実行する。
+構文解析と静的検査が通っても、到達可能な状態の性質はまだ検証されていない。
+TLCが利用できる環境では次を実行する。
 
 ```bash
 deno task verify --strict --bound=3 path/to/spec.md
@@ -66,7 +66,7 @@ specforge verify --strict --bound=3 path/to/spec.md
 `--bound` は状態変数の有限値域を決める。
 ガードの境界値を含む最小の値から始め、必要な範囲まで広げる。
 
-## Review Result
+## レビュー結果
 
 レビュー結果では次の三種類を区別する。
 
@@ -77,7 +77,7 @@ specforge verify --strict --bound=3 path/to/spec.md
 `verified ok` は有限化したモデルが宣言済み property を満たしたことを示す。
 要求が正しく仕様化されていることや、実装が仕様に従っていることまでは保証しない。
 
-## Current Verification Boundaries
+## 現在の検証範囲
 
 authoring 規律が表現できる意味のすべてを、現在の specforge が検証できるわけではない。
 次の制約をレビュー結果に含める。
@@ -86,7 +86,7 @@ authoring 規律が表現できる意味のすべてを、現在の specforge �
   として変換し、同名 event を同期させない。
 - 複数 spec file の event contract と parent-child refinement は、文書としてレビューできるが、
   specforge は file 間を合成しない。
-- action は名前だけを変換する opaque な作用であり、action による state variable update は 検証 model
-  へ反映されない。
+- CSPmではアクション名をイベントとして残すが、TLA+ではアクションによる状態変数の更新を生成しない。
+  どちらの形式でも、実際の副作用や冪等性は検査しない。
 
 該当する性質を検証したと報告せず、未検証の契約として区別する。

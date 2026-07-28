@@ -1,9 +1,10 @@
 # specforge 入力仕様
 
-specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それを取り巻く補助情報 (イベント契約表
-/ 設計メモ等) の契約を定める。本リポジトリの `spec-behavior` skill
-が出力するスペックを正準入力として想定し、そこからの**機械的な TLA+ / CSPm
-変換**を成立させるための制約を明示する (TLA+ + TLC を primary、CSPm + FDR4 を secondary backend)。
+specforgeが受理するMermaid
+`stateDiagram-v2`の限定記法と、イベント契約表などの補助情報の契約を定める。
+本リポジトリの`spec-behavior`
+skillが出力する仕様を正準入力とし、TLA+とCSPmへ曖昧さなく変換するための制約を示す。
+通常の検証にはTLA+とTLCを使い、CSPmはFDR4を利用できる環境での追加検査に使う。
 
 ---
 
@@ -30,8 +31,8 @@ specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それ�
 - `spec-behavior` skill の参照資料にある全 Mermaid サンプルが無修正で parse できる
 - `~/job/docs/tasks/active/hitl-evaluation-system-phase-flow-spec.md` 相当の現実スペックが parse
   できる
-- 変換結果が **TLC** (TLA+) で構文受理され、deadlock-free check が走る (`specforge verify` で
-  end-to-end 実行可能)。 FDR4 (CSPm) も同様、環境があれば
+- 変換結果がTLCで構文受理され、`specforge verify`でデッドロック検査まで一続きに実行できる
+- CSPm出力は生成できる。FDR4での実機検査は未完了であり、検証済みとはしない
 
 ---
 
@@ -55,7 +56,7 @@ specforge が受理する Mermaid `stateDiagram-v2` サブセットと、それ�
 | `state X <<choice>>` choice 擬似状態             | **拒絶**           | ガード + 複数遷移で表現 (§6)                |
 | `state X <<fork>>`, `<<join>>`                   | **拒絶**           | 直交領域で表現                              |
 | `note right of X : ...` 等 notes                 | **拒絶**           | 視覚要素、振る舞い意味なし                  |
-| `direction LR` / `TB`                            | **無視**           | parse はするが意味は持たない (検討中、§7)   |
+| `direction LR` / `TB`                            | **拒絶**           | 現在の構文解析器は受理しない                |
 | `classDef`, `class X foo`                        | **拒絶**           | スタイル要素                                |
 | `click X "url"`                                  | **拒絶**           | navigation 要素                             |
 | `state X : multi\nline\ndesc` 複数行 description | **拒絶**           | エイリアス形式 `as` を使う                  |
@@ -91,7 +92,8 @@ state_ref     ::= '[*]' | ID
 label         ::= event_part? guard_part? action_part?
 event_part    ::= ID arglist?
 guard_part    ::= '[' guard_expr ']'
-action_part   ::= '/' SP? ID arglist?
+action_part   ::= '/' SP? action (',' SP? action)*
+action        ::= ID arglist?
 arglist       ::= '(' arg (',' SP? arg)* ')'
 arg           ::= ID                          ; payload field 参照のみ (リテラルは未対応、§7)
 guard_expr    ::= [^\]]+                      ; 平文として保持し別途検証 (§4.3)
@@ -114,13 +116,12 @@ empty_line    ::= SP? NEWLINE
 
 ### 3.3 意味規則 (parse 後の検証 — Validation pass、§5.4)
 
-- ID は **同一スコープ内で一意**。composite の親と子で同名 ID は許容 (将来 namespace で区別)
-  だが、現状は **warning**
+- IDは同一範囲内で一意にする。 現在の静的検査は重複IDを検出しないため、仕様レビューでも確認する
 - `[*]` は遷移の `from` または `to` のみに現れる。`state [*]` のような宣言は不可
 - `--` は composite_body 内でのみ出現可能。トップレベル region に書かれていたら `ParseError`
 - composite は **0 個以上**の region を持つ (中身空も許容、refinement の親 spec
   で内部詳細省略時に使う)
-- 同じ `(from, to, event, guard)` の組合せが複数回現れたら **warning** (ガード競合の可能性、W03)
+- 同じ`(from, to, event, guard)`の組合せが複数回現れたら、静的検査V007で警告する
 
 ---
 
@@ -230,10 +231,9 @@ VAL の bound はデフォルト `{0..1}` で生成される (検証時の状態
 ガード / アクションで参照される状態変数を、型と所有者 (どの step が書くか) を含めて列挙する。CSP
 プロセスパラメータへのマップに使う。
 
-specforge は `### 共有(状態|変数)` / `### State variable(s)` / `### Shared state` を含む見出しの
-直後の markdown 表から **1 列目を変数名**として取り出し、CSPm 冒頭に `<name> = 0` の定数定義を emit
-する。それ以外の列 (型 / 書き手 / 初期値 等) は現状 specforge は読まない (Phase 3 で型情報を
-取り込んでプロセスパラメータ化する予定)。
+specforgeは`### 共有状態`、`### 共有変数`、`### State variables`、`### Shared state`のいずれかを含む見出しの直後にあるMarkdown表から、第一列を変数名として取り出す。
+型、書き手、初期値など、第二列以降は読み取らない。
+CSPmでは各プロセスの引数、TLA+では状態変数として生成し、初期値はいずれも0に固定する。
 
 形式 (推奨):
 
@@ -259,11 +259,9 @@ Sampling(catalog_size, prelabeled_count) =
   [] ...
 ```
 
-Phase 4 で **プロセスパラメータ threading** に切り替わった: 全プロセスが state var 列を引数として
-受け取り、target invocation で同じ引数を伝播する。event payload field の名前が state var 名と
-一致すると、CSPm の `?` 受信が自動でスコープシャドウィングを起こし、続く invocation には 新値が
-thread される (上の例だと `sampling_done?_.catalog_size` で受け取った値がそのまま
-`ParallelSetup(catalog_size, ...)` に渡る)。
+すべてのCSPmプロセスは状態変数を引数として受け取り、次のプロセスへ同じ引数を渡す。
+イベントのペイロード項目と状態変数の名前が一致すると、`?`による受信値が同名の引数を置き換え、次のプロセスへ新しい値として渡される。
+上の例では、`sampling_done?batch_id.catalog_size`で受け取った`catalog_size`が、そのまま`ParallelSetup(catalog_size, ...)`へ渡される。
 
 シナリオごとに違う初期値で検証したい場合は、生成された `Spec = Initial(0, 0, ...)` の数値を
 書き換えるか、`|~| c : VAL @ Sampling(c, 0, ...)` 形式の非決定的選択で全初期値を網羅する。
@@ -439,15 +437,18 @@ TLA+ 変換の概要 (Phase A + B + 2):
 StateName = <出ていく遷移の選択>
 ```
 
-### 7.2 遷移 → prefix + choice
+### 7.2 遷移からイベント接頭辞と外部選択への変換
 
 `A --> B : event [guard] / action` を:
 
-```
-A = event -> (if guard then action -> B else ...) [] <他の遷移>
+```cspm
+A =
+  (guard) & event -> action -> B
+  []
+  other_event -> C
 ```
 
-guard が無ければ if/else 不要、action が無ければ直接 `event -> B`。
+ガードがなければ`(guard) &`を、アクションがなければ`action ->`を省略する。
 
 ### 7.3 ガード処理
 
@@ -458,15 +459,17 @@ A --> B : ev [g1] / a1
 A --> C : ev [g2] / a2
 ```
 
-→
+は次のように、それぞれ独立した外部選択へ変換する。
 
-```
-A = ev -> (if g1 then a1 -> B
-           else if g2 then a2 -> C
-           else SKIP)
+```cspm
+A =
+  (g1) & ev -> a1 -> B
+  []
+  (g2) & ev -> a2 -> C
 ```
 
-決定性のため g1, g2 は disjoint であることを Validation pass で warning (`W03 ガード競合`)。
+現在の静的検査は、`g1`と`g2`が同時に成立するか、両方とも成立しない値があるかを判定しない。
+仕様のレビューで、同じ状態とイベントから出るガードの重なりと漏れを確認する。
 
 ### 7.4 内部遷移 → 隠蔽
 
@@ -510,24 +513,23 @@ Outer = ParallelBody /\ (exit_event -> ExternalState)
 UML の「進行中 region の処理打ち切り」セマンティクスに対応 (spec-behavior の「orthogonal region
 退出セマンティクス」)。
 
-### 7.7 at-least-once → 冪等性活用
+### 7.7 重複配送と冪等性
 
-CSP は exactly-once 同期。at-least-once を直接表現できないため、spec の冪等性アノテーションを使う:
-
-- **冪等系アクション**: 同 event の重複受信を許容する self-loop を追加 (no-op として吸収)
-- **累積系アクション**: 重複受信は不正状態として扱う (実装層が dedup 責任を持つ前提を明示)
+現在のspecforgeは、イベントの重複配送やアクションの冪等性を変換結果へ反映しない。
+冪等性の宣言は人が設計を確認するための情報であり、同一イベントを吸収する自己遷移は自動生成しない。
+重複配送を検査モデルに含める場合は、仕様の状態機械へ明示的に遷移を追加する必要がある。
 
 ### 7.8 状態変数 → プロセスパラメータ
 
 ガード / アクションで参照される状態変数を CSP プロセスのパラメータにする:
 
 ```
-Sampling(catalog_size) = sampling_done?cs -> 
-    if cs > 0 then ParallelSetup(cs) 
-    else Published
+Sampling(catalog_size) =
+    sampling_done?catalog_size ->
+        (catalog_size > 0) & ParallelSetup(catalog_size)
 ```
 
-§5.2 の状態変数一覧をもとに自動でパラメータ化する (実装 pending)。
+§5.2の状態変数一覧をもとに、自動でプロセスの引数へ変換する。
 
 ---
 
@@ -546,9 +548,9 @@ stateDiagram-v2
 期待 CSPm (sketch):
 
 ```
-Red = timer & count_done -> log_change -> Green
-Green = timer & count_done -> log_change -> Yellow
-Yellow = timer & count_done -> log_change -> Red
+Red = (count_done) & timer -> log_change -> Green
+Green = (count_done) & timer -> log_change -> Yellow
+Yellow = (count_done) & timer -> log_change -> Red
 ```
 
 ### 8.2 composite + orthogonal regions
