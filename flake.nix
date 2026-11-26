@@ -21,9 +21,9 @@
         jdk = pkgs.jdk21;
       in
       {
-        devShells.default = pkgs.mkShell {
+        devShells.default = pkgs.mkShellNoCC {
           packages = [
-            pkgs.deno
+            pkgs.bun
             jdk
           ];
 
@@ -31,7 +31,7 @@
             export JAVA_HOME="${jdk.home}"
             export SPECFORGE_TLA_JAR="${tla2tools}"
             echo "specforge dev shell"
-            echo "  deno: $(deno --version | head -n1)"
+            echo "  bun: $(bun --version)"
             echo "  java: $(java -version 2>&1 | head -n1)"
             echo "  SPECFORGE_TLA_JAR=$SPECFORGE_TLA_JAR (tla2tools ${tla2toolsVersion})"
           '';

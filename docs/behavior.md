@@ -157,8 +157,8 @@ CSPm出力では名前をイベントとして残すが、TLA+出力では現在
 ## この仕様を検査する
 
 ```bash
-deno task cli --json --strict docs/behavior.md
-deno task verify --strict --bound=3 docs/behavior.md
+bun run cli --json --strict docs/behavior.md
+bun run verify --strict --bound=3 docs/behavior.md
 ```
 
 最初のコマンドは構文と静的な不整合を調べる。

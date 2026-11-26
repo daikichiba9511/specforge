@@ -120,7 +120,7 @@ stateDiagram-v2
 ## 検証手順
 
 ```bash
-$ deno task verify --bound=2 examples/producer-consumer.md
+$ bun run verify --bound=2 examples/producer-consumer.md
 verified ok
 ... distinct states found ...
 Model checking completed. No error has been found.

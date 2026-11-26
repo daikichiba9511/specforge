@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { test } from "bun:test";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { main } from "../src/cli.ts";
 
 const VALID_SPEC = `stateDiagram-v2
@@ -8,14 +9,14 @@ const VALID_SPEC = `stateDiagram-v2
 
 const INVALID_SPEC = `not a spec at all`;
 
-Deno.test("main: valid spec returns success with cspm on stdout", () => {
+test("main: valid spec returns success with cspm on stdout", () => {
     const r = main(["spec.mmd"], { readFile: () => VALID_SPEC });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
     assertEquals(r.stdout.includes("A ="), true);
 });
 
-Deno.test("main: missing arg returns failure with usage", () => {
+test("main: missing arg returns failure with usage", () => {
     const r = main([]);
     assertEquals(r.kind, "failure");
     if (r.kind !== "failure") return;
@@ -23,7 +24,7 @@ Deno.test("main: missing arg returns failure with usage", () => {
     assertEquals(r.stderr.startsWith("usage"), true);
 });
 
-Deno.test("main: file read failure returns io error", () => {
+test("main: file read failure returns io error", () => {
     const r = main(["spec.mmd"], {
         readFile: () => {
             throw new Error("ENOENT: no such file");
@@ -35,7 +36,7 @@ Deno.test("main: file read failure returns io error", () => {
     assertEquals(r.stderr.startsWith("could not read file"), true);
 });
 
-Deno.test("main: parse error returns failure with line number", () => {
+test("main: parse error returns failure with line number", () => {
     const r = main(["spec.mmd"], { readFile: () => INVALID_SPEC });
     assertEquals(r.kind, "failure");
     if (r.kind !== "failure") return;
@@ -63,14 +64,14 @@ A --> B : ev [ok] / act
 | \`x\` |
 `;
 
-Deno.test("main: .md input extracts mermaid block and applies guard substitution", () => {
+test("main: .md input extracts mermaid block and applies guard substitution", () => {
     const r = main(["spec.md"], { readFile: () => MARKDOWN_SPEC });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
     assertEquals(r.stdout.includes("(x > 0) & ev -> act -> B"), true);
 });
 
-Deno.test("main: .md input emits channels + process parameters (Phase 4)", () => {
+test("main: .md input emits channels + process parameters (Phase 4)", () => {
     const r = main(["spec.md"], { readFile: () => MARKDOWN_SPEC });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
@@ -80,7 +81,7 @@ Deno.test("main: .md input emits channels + process parameters (Phase 4)", () =>
     assertEquals(r.stdout.includes("B(x)"), true);
 });
 
-Deno.test("main: --tla flag switches to TLA+ backend", () => {
+test("main: --tla flag switches to TLA+ backend", () => {
     const r = main(["--tla", "spec.md"], { readFile: () => MARKDOWN_SPEC });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
@@ -88,7 +89,7 @@ Deno.test("main: --tla flag switches to TLA+ backend", () => {
     assertEquals(r.stdout.includes("Spec == Init /\\ [][Next]_vars"), true);
 });
 
-Deno.test("main: --json flag outputs AST + metadata as JSON", () => {
+test("main: --json flag outputs AST + metadata as JSON", () => {
     const r = main(["--json", "spec.md"], { readFile: () => MARKDOWN_SPEC });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
@@ -101,7 +102,7 @@ Deno.test("main: --json flag outputs AST + metadata as JSON", () => {
 const SPEC_WITH_WARNING = `stateDiagram-v2
 A --> B : ev [missing_guard]`;
 
-Deno.test("main: validation issues attached as warnings, success kind unchanged by default", () => {
+test("main: validation issues attached as warnings, success kind unchanged by default", () => {
     const r = main(["spec.mmd"], { readFile: () => SPEC_WITH_WARNING });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
@@ -109,7 +110,7 @@ Deno.test("main: validation issues attached as warnings, success kind unchanged 
     assertEquals(r.warnings![0].includes("V001"), true);
 });
 
-Deno.test("main: --strict converts warnings into failure", () => {
+test("main: --strict converts warnings into failure", () => {
     const r = main(["--strict", "spec.mmd"], { readFile: () => SPEC_WITH_WARNING });
     assertEquals(r.kind, "failure");
     if (r.kind !== "failure") return;
@@ -117,14 +118,14 @@ Deno.test("main: --strict converts warnings into failure", () => {
     assertEquals(r.warnings !== undefined && r.warnings.length > 0, true);
 });
 
-Deno.test("main: clean spec → no warnings attached", () => {
+test("main: clean spec → no warnings attached", () => {
     const r = main(["spec.mmd"], { readFile: () => VALID_SPEC });
     assertEquals(r.kind, "success");
     if (r.kind !== "success") return;
     assertEquals(r.warnings, []);
 });
 
-Deno.test("main: --bound=N propagates to TLA+ Domain", () => {
+test("main: --bound=N propagates to TLA+ Domain", () => {
     // payload binding が無いと Domain が emit されない → bound 効果を検証するため
     // event payload と state var が一致する spec を用意する
     const SPEC = `# title
@@ -158,7 +159,7 @@ A --> B : ev [ok]
     assertEquals(r.stdout.includes("Domain == 0..4"), true);
 });
 
-Deno.test("main: --bound=N propagates to CSPm nametype VAL", () => {
+test("main: --bound=N propagates to CSPm nametype VAL", () => {
     // payload event を持つ spec で typed channel を emit させる
     const SPEC = `# title
 
@@ -179,14 +180,14 @@ A --> B : ev
     assertEquals(r.stdout.includes("nametype VAL = {0..3}"), true);
 });
 
-Deno.test("main: --bound=abc returns failure with informative message", () => {
+test("main: --bound=abc returns failure with informative message", () => {
     const r = main(["--bound=abc", "spec.mmd"], { readFile: () => VALID_SPEC });
     assertEquals(r.kind, "failure");
     if (r.kind !== "failure") return;
     assertEquals(r.stderr.includes("--bound"), true);
 });
 
-Deno.test("main: --bound=-1 (negative) is rejected", () => {
+test("main: --bound=-1 (negative) is rejected", () => {
     const r = main(["--bound=-1", "spec.mmd"], { readFile: () => VALID_SPEC });
     assertEquals(r.kind, "failure");
 });

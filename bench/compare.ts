@@ -1,16 +1,18 @@
+import { readFile } from "node:fs/promises";
+
 /**
- * `deno bench --json` の出力 2 ファイルを比較し、変化率の表を出力する。
+ * `bun run bench --json` の出力 2 ファイルを比較し、変化率の表を出力する。
  *
  * 用途: ローカルで before / after を比較する。CI 連携は無し。
  *
  * @example
  * ```bash
- * deno bench --json bench/ > /tmp/before.json
+ * bun run bench --json > /tmp/before.json
  * # ... edit code ...
- * deno bench --json bench/ > /tmp/after.json
- * deno task bench:compare /tmp/before.json /tmp/after.json
+ * bun run bench --json > /tmp/after.json
+ * bun run bench:compare /tmp/before.json /tmp/after.json
  * # 閾値変更:
- * deno task bench:compare /tmp/before.json /tmp/after.json --threshold=10
+ * bun run bench:compare /tmp/before.json /tmp/after.json --threshold=10
  * ```
  *
  * 終了コード:
@@ -36,7 +38,7 @@ type Row = {
 };
 
 const readJson = async (path: string): Promise<BenchFile> => {
-    const text = await Deno.readTextFile(path);
+    const text = await readFile(path, "utf8");
     return JSON.parse(text) as BenchFile;
 };
 
@@ -93,7 +95,7 @@ const parseArgs = (
     return { beforePath: positional[0], afterPath: positional[1], threshold };
 };
 
-const usage = "usage: deno run --allow-read bench/compare.ts <before.json> <after.json> " +
+const usage = "usage: bun run bench:compare <before.json> <after.json> " +
     "[--threshold=<percent>]";
 
 const main = async (args: string[]): Promise<number> => {
@@ -124,5 +126,5 @@ const main = async (args: string[]): Promise<number> => {
 };
 
 if (import.meta.main) {
-    Deno.exit(await main(Deno.args));
+    process.exitCode = await main(process.argv.slice(2));
 }

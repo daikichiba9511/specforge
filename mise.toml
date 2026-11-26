@@ -1,5 +1,5 @@
 [tools]
-deno = "2"
+bun = "1.4.4"
 java = "openjdk-21"
 
 # tla2tools.jar は mise では管理しない。

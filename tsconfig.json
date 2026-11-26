@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "noEmit": true,
+        "module": "Preserve",
+        "target": "ESNext",
+        "allowImportingTsExtensions": true,
+        "types": ["bun"]
+    },
+    "include": ["src", "tests", "bench", ".agents/skills/spec-behavior/evals"]
+}

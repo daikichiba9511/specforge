@@ -40,26 +40,26 @@
 
 ## 実行する
 
-リポジトリ内でDenoタスクを使う場合は、次のコマンドを実行する。
+リポジトリ内でBunのスクリプトを使う場合は、次のコマンドを実行する。
 
 ```bash
 # CSPmを生成する
-deno task cli examples/vending-machine.md
+bun run cli examples/vending-machine.md
 
 # TLA+を生成する
-deno task cli --tla examples/vending-machine.md
+bun run cli --tla examples/vending-machine.md
 
 # 抽象構文木と補助情報をJSONで表示する
-deno task cli --json examples/vending-machine.md
+bun run cli --json examples/vending-machine.md
 
 # 静的検査の警告を失敗として扱う
-deno task cli --json --strict examples/vending-machine.md
+bun run cli --json --strict examples/vending-machine.md
 
 # 状態変数の値域を0..3としてTLCで検査する
-deno task verify --strict --bound=3 examples/vending-machine.md
+bun run verify --strict --bound=3 examples/vending-machine.md
 ```
 
-ビルド済みの`bin/specforge`をパスへ追加している場合は、`deno task cli`を`specforge`に、`deno task verify`を`specforge verify`に置き換える。
+ビルド済みの`bin/specforge`をパスへ追加している場合は、`bun run cli`を`specforge`に、`bun run verify`を`specforge verify`に置き換える。
 
 ## 検査結果を読む
 

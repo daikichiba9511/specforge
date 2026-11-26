@@ -5,12 +5,11 @@ specforge のベンチ・プロファイリング手順。CI 連携は無し (�
 ## ベンチを走らせる
 
 ```bash
-deno task bench
+bun run bench
 ```
 
-[Deno.bench](https://docs.deno.com/runtime/manual/tools/benchmarker/) が `bench/*_bench.ts`
-を自動検出し、`time/iter (avg)` `p75` `p99` などを表で出す。 fixture は `bench/_fixtures.ts` で合成
-(`_` プレフィックスのため自動検出対象外)。
+`bench/run.ts` は Tinybench で各ケースの実行時間とスループットを計測する。
+入力データの生成と、CSPm への変換に使う構文木の準備は計測前に行う。
 
 カバーしているケース:
 
@@ -25,46 +24,37 @@ deno task bench
 ## before / after を比較する
 
 ```bash
-deno bench --json bench/ > /tmp/before.json
+bun run bench --json > /tmp/before.json
 # ...コード編集...
-deno bench --json bench/ > /tmp/after.json
-deno task bench:compare /tmp/before.json /tmp/after.json
+bun run bench --json > /tmp/after.json
+bun run bench:compare /tmp/before.json /tmp/after.json
 ```
 
 変化率の表が出る。デフォルトでは 1 件でも `+20%` 超で exit 1。閾値は `--threshold=10`
 などで上書き可。
 
-ノイズの目安: 同一バイナリを 2 回走らせても `±10%`
-程度はぶれる。レギュレッション判定したい場合は計測を複数回回して傾向を見る。
+性能の比較には、同じマシンと Bun バージョンで取得した結果を使う。
+Deno 時代の JSON も読み込めるが、実行エンジンと計測方法が異なるため、移行後の基準値は Bun で取り直す。
 
 ## CPU プロファイルを取る
 
-V8 の inspector + Chrome DevTools / [speedscope](https://speedscope.app/) を使う。
+```bash
+bun --cpu-prof --cpu-prof-dir=/tmp bench/run.ts
+```
 
-1. inspector 待機モードで bench を起動。
-
-   ```bash
-   deno run --inspect-brk --allow-read bench/parser_bench.ts
-   ```
-
-2. Chrome で `chrome://inspect` を開き、Target の `inspect` をクリック。
-3. **Sources** タブで再生ボタン (Continue) を押す前に、**Profiler** タブで `Start`。
-4. Sources で Continue → bench が完走 → Profiler で `Stop` → `Save profile`。
-5. `.cpuprofile` を [speedscope](https://speedscope.app/) にドラッグ&ドロップ。Left Heavy / Sandwich
-   表示で hot path を確認。
-
-ピンポイントで特定 fixture だけ計測したい場合は、対象 `Deno.bench` のみ残した `*_bench.ts`
-を一時的に作るのが手軽。
+生成された `.cpuprofile` を Chrome DevTools の Performance パネルで開くと、各関数に費やした時間を確認できる。
 
 ## メモリプロファイル
 
-Chrome DevTools の **Memory** タブで Heap snapshot。`--inspect-brk` で同様にアタッチ。 parse()
-を複数回呼ぶワーカースクリプトを書き、AST が GC で開放されているか (RetainedSize の推移)
-を見る用途。
+```bash
+bun --heap-prof --heap-prof-dir=/tmp bench/run.ts
+```
+
+生成された `.heapprofile` を Chrome DevTools の Memory パネルに読み込むと、メモリを確保した関数を調べられる。
 
 ## 着目ポイント
 
-過去計測から、最適化を始める場合に最初に当たる候補:
+Deno 時代の計測から、最適化を始める場合に最初に当たる候補:
 
 | 箇所                            | 現状 (10k transitions)          | 候補                                         |
 | ------------------------------- | ------------------------------- | -------------------------------------------- |
@@ -77,6 +67,5 @@ Chrome DevTools の **Memory** タブで Heap snapshot。`--inspect-brk` で同�
 
 ## 参考
 
-- Deno bench: https://docs.deno.com/runtime/manual/tools/benchmarker/
-- speedscope: https://github.com/jlfwong/speedscope
-- V8 profiler: https://v8.dev/docs/profile
+- [Tinybench](https://github.com/tinylibs/tinybench)
+- [Bun のプロファイリング](https://bun.com/docs/project/benchmarking)

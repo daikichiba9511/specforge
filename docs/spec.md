@@ -407,9 +407,9 @@ state "サンプリング中" as Sampling
 
 specforge は同じ AST から 2 つの形式に変換できる:
 
-- **CSPm** (`src/cspm.ts`): FDR4 入力。プロセス代数。default 出力。 `deno task cli spec.md`
-- **TLA+** (`src/tla.ts`): TLC 入力。状態機械 + 時相論理。`deno task cli --tla spec.md` または
-  `deno task verify spec.md` (TLC で検証まで実行)
+- **CSPm** (`src/cspm.ts`): FDR4 入力。プロセス代数。default 出力。 `bun run cli spec.md`
+- **TLA+** (`src/tla.ts`): TLC 入力。状態機械 + 時相論理。`bun run cli --tla spec.md` または
+  `bun run verify spec.md` (TLC で検証まで実行)
 
 TLA+ 変換の概要 (Phase A + B + 2):
 

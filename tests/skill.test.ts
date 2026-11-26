@@ -1,4 +1,6 @@
-import { assert, assertEquals } from "jsr:@std/assert@^1";
+import { readFile } from "node:fs/promises";
+import { test } from "bun:test";
+import { deepStrictEqual as assertEquals, ok as assert } from "node:assert/strict";
 import { parse } from "../src/parser.ts";
 import { preprocess } from "../src/spec_doc.ts";
 import { validate } from "../src/validate.ts";
@@ -13,12 +15,12 @@ const extractStateDiagrams = (markdown: string): string[] =>
         .map((match) => match[1].trim())
         .filter((block) => block.startsWith("stateDiagram-v2"));
 
-Deno.test("repo-local spec-behavior examples stay parseable by specforge", async () => {
+test("repo-local spec-behavior examples stay parseable by specforge", async () => {
     let exampleCount = 0;
 
     for (const relativePath of SKILL_REFERENCE_FILES) {
         const path = new URL(relativePath, import.meta.url);
-        const markdown = await Deno.readTextFile(path);
+        const markdown = await readFile(path, "utf8");
         const diagrams = extractStateDiagrams(markdown);
         exampleCount += diagrams.length;
 
@@ -36,9 +38,9 @@ Deno.test("repo-local spec-behavior examples stay parseable by specforge", async
     assertEquals(exampleCount > 0, true, "expected at least one stateDiagram-v2 example");
 });
 
-Deno.test("writing guide complete example passes strict validation", async () => {
+test("writing guide complete example passes strict validation", async () => {
     const guidePath = new URL("../docs/writing-specs.md", import.meta.url);
-    const guide = await Deno.readTextFile(guidePath);
+    const guide = await readFile(guidePath, "utf8");
     const template = /````markdown\s*\n([\s\S]*?)\n````/.exec(guide)?.[1];
     assert(template, "docs/writing-specs.md must contain a complete Markdown example");
 

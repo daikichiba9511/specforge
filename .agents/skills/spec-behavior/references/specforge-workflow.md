@@ -38,7 +38,7 @@ specforge に渡す仕様は Markdown の `.md` を基本とする。 生の `.m
 リポジトリ内で作業している場合は、保存後に次を実行する。
 
 ```bash
-deno task cli --json --strict path/to/spec.md
+bun run cli --json --strict path/to/spec.md
 ```
 
 インストール済みバイナリを使う場合は次を実行する。
@@ -54,7 +54,7 @@ specforge --json --strict path/to/spec.md
 TLCが利用できる環境では次を実行する。
 
 ```bash
-deno task verify --strict --bound=3 path/to/spec.md
+bun run verify --strict --bound=3 path/to/spec.md
 ```
 
 バイナリの場合は次を実行する。

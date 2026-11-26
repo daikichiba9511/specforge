@@ -38,9 +38,9 @@ Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)   →  deadlock-f
   補助情報 / TLA+ + CSPm 変換セマンティクス)
 - **[`docs/behavior.md`](./docs/behavior.md)** — specforge自身の実行時振る舞い仕様
   （specforge自身でTLA+へ変換し、TLCによるデッドロックと終端到達の検査済み）
-- **[`docs/perf.md`](./docs/perf.md)** — bench (`deno task bench`) workflow / before-after 比較 /
+- **[`docs/perf.md`](./docs/perf.md)** — bench (`bun run bench`) workflow / before-after 比較 /
   CPU プロファイル取得手順
-- **[`docs/decisions.md`](./docs/decisions.md)** — 採用済の設計判断 (Deno 採用 / hand-roll parser /
+- **[`docs/decisions.md`](./docs/decisions.md)** — 採用済の設計判断 (Bun 採用 / hand-roll parser /
   TLA+ primary / WF on Next default 等) + 未決の問題 (open design questions)
 - **[`tasks/todo.md`](./tasks/todo.md)** — 残タスク (Pri A/B/C, Size S/M/L) + 完了履歴サマリ +
   「意図的にやらない」決定の記録
@@ -76,20 +76,21 @@ Mermaid stateDiagram-v2  →  typed AST  →  TLA+ (TLC input)   →  deadlock-f
 ### Useful commands
 
 ```bash
-deno task test       # run tests
-deno task fmt        # format
-deno task lint       # lint
-deno task check      # type check
-deno task cli examples/traffic-light.mmd          # CSPm 出力 (validation warnings は stderr)
-deno task cli --tla examples/traffic-light.mmd    # TLA+ 出力
-deno task cli --json examples/traffic-light.mmd   # AST + metadata の JSON 出力
-deno task cli --strict examples/traffic-light.mmd # validation warning を error 扱い (exit 1)
-deno task cli --bound=3 spec.md                   # Domain/VAL の値域を 0..3 に
-deno task verify examples/traffic-light.mmd       # spec → TLA+ → TLC で検証
-deno task verify --bound=5 spec.md                # 広い状態空間で検証
-deno task compile    # produce bin/specforge binary
-deno task bench      # run all benchmarks
-deno task bench:compare /tmp/before.json /tmp/after.json   # compare two `deno bench --json` runs
+bun install --frozen-lockfile  # install development tools
+bun run test       # run tests
+bun run fmt        # format
+bun run lint       # lint
+bun run check      # type check
+bun run cli examples/traffic-light.mmd          # CSPm 出力 (validation warnings は stderr)
+bun run cli --tla examples/traffic-light.mmd    # TLA+ 出力
+bun run cli --json examples/traffic-light.mmd   # AST + metadata の JSON 出力
+bun run cli --strict examples/traffic-light.mmd # validation warning を error 扱い (exit 1)
+bun run cli --bound=3 spec.md                   # Domain/VAL の値域を 0..3 に
+bun run verify examples/traffic-light.mmd       # spec → TLA+ → TLC で検証
+bun run verify --bound=5 spec.md                # 広い状態空間で検証
+bun run compile    # produce bin/specforge binary
+bun run bench      # run all benchmarks
+bun run bench:compare /tmp/before.json /tmp/after.json   # compare two `bun run bench --json` runs
 ```
 
 パフォーマンス周りは [`docs/perf.md`](./docs/perf.md) に詳細。
@@ -97,7 +98,7 @@ deno task bench:compare /tmp/before.json /tmp/after.json   # compare two `deno b
 ### `verify` の前提
 
 - **Java**: `brew install openjdk` で OpenJDK が入る。 verify は
-  `/opt/homebrew/opt/openjdk/bin/java` → `JAVA_HOME/bin/java` → `/usr/bin/java` の順で探す
+  `JAVA_HOME/bin/java` → Homebrew の OpenJDK → `/usr/bin/java` の順で探す
 - **tla2tools.jar**: https://github.com/tlaplus/tlaplus/releases/latest から DL し
   `~/.local/share/specforge/tla2tools.jar` に配置 (もしくは `SPECFORGE_TLA_JAR` env var で上書き)
 - TLA+ module 名は `Spec` 固定 (一時ファイルが `Spec.tla` / `Spec.cfg`)

@@ -101,7 +101,7 @@ specforge の現在の挙動: `internal_check_lockout` を他の event と同様
 ## 検証手順
 
 ```bash
-$ deno task verify --bound=3 examples/internal-events.md
+$ bun run verify --bound=3 examples/internal-events.md
 verified ok
 ... Model checking completed. No error has been found.
 ... states generated, ... distinct states found, ...

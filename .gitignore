@@ -1,5 +1,5 @@
-# Deno
-.deno/
+# Development dependencies
+node_modules/
 
 # Build artifacts
 dist/
