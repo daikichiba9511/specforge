@@ -11,10 +11,11 @@ type TransitionContext =
     | { kind: "top" }
     | { kind: "region"; compositeId: string; regionIdx: number };
 
-type Located<T> = { t: T; context: TransitionContext };
+/** 生成したアクションに対応する仕様の遷移。状態の表示名は元の領域内で解決する。 */
+export type TlaTransition = { t: Transition; context: TransitionContext; region: Region };
 
 type Analysis = {
-    transitions: Located<Transition>[];
+    transitions: TlaTransition[];
     composites: Map<string, Composite>;
     topStates: Set<string>;
     regionEntries: Map<string, string>; // key: `${compositeId}:${regionIdx}` → 入口 state 名
@@ -22,7 +23,7 @@ type Analysis = {
 
 /** 遷移の所属領域、各領域の入口、最上位の状態名を集め、TLA+ の変数とアクションの生成に使う。 */
 function analyze(diagram: Diagram): Analysis {
-    const transitions: Located<Transition>[] = [];
+    const transitions: TlaTransition[] = [];
     const composites = new Map<string, Composite>();
     const topStates = new Set<string>();
     const regionEntries = new Map<string, string>();
@@ -49,7 +50,7 @@ function analyze(diagram: Diagram): Analysis {
 
             for (const stmt of region.stmts) {
                 if (stmt.kind === "transition") {
-                    transitions.push({ t: stmt, context });
+                    transitions.push({ t: stmt, context, region });
                     if (context.kind === "top") {
                         if (!isPseudoState(stmt.from)) topStates.add(stmt.from);
                         if (!isPseudoState(stmt.to)) topStates.add(stmt.to);
@@ -328,6 +329,7 @@ function hasAnyPayloadBinding(analysis: Analysis, ctx: EmitContext): boolean {
  * @param liveness      - `### Liveness` 表の時相プロパティ列。 1 件以上ある場合は
  *                        `Fairness == WF_vars(Next)` と各 property 定義が emit される。
  *                        省略時 空 (safety のみ、 fairness 無し)
+ * @param onAction - 反例表示のため、生成したアクション名と元の遷移を受け取る。
  */
 export function generateTla(
     diagram: Diagram,
@@ -337,6 +339,7 @@ export function generateTla(
     moduleName: string = "Spec",
     bound: number = 1,
     liveness: LivenessProp[] = [],
+    onAction?: (name: string, source: TlaTransition) => void,
 ): string {
     const analysis = analyze(diagram);
     const { initialState, terminal } = topLevelFlow(diagram);
@@ -384,6 +387,12 @@ export function generateTla(
     // Init
     const initParts: string[] = [];
     if (initialState !== null) {
+        if (onAction) {
+            const entry = analysis.transitions.find(({ t, context }) =>
+                context.kind === "top" && isPseudoState(t.from)
+            );
+            if (entry) onAction("Init", entry);
+        }
         initParts.push(`/\\ phase = "${initialState}"`);
     } else {
         initParts.push(`/\\ phase = "UNDEFINED"  \\* no [*] --> Initial found`);
@@ -411,7 +420,8 @@ export function generateTla(
 
     // Actions
     const actionNames: string[] = [];
-    for (const { t, context } of analysis.transitions) {
+    for (const source of analysis.transitions) {
+        const { t, context } = source;
         if (isPseudoState(t.from)) continue;
 
         if (context.kind === "region") {
@@ -421,6 +431,7 @@ export function generateTla(
                 }`,
             );
             const name = uniqueName(base, ctx.used);
+            onAction?.(name, source);
             actionNames.push(name);
             lines.push(`${name} ==`);
             lines.push(formatRegionAction(t, context.compositeId, context.regionIdx, ctx));
@@ -435,6 +446,7 @@ export function generateTla(
 
         const baseName = sanitize(`${t.from}_${t.label.event ?? "tau"}_${t.to}`);
         const name = uniqueName(baseName, ctx.used);
+        onAction?.(name, source);
         actionNames.push(name);
         lines.push(`${name} ==`);
 

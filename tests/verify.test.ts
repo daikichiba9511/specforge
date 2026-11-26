@@ -46,6 +46,104 @@ test("verify: returns failed with summary when TLC exits non-zero", () => {
     expect(result.stdout).toContain("Deadlock");
 });
 
+test("verify: renders both the path and the closing edge of a TLC counterexample", async () => {
+    const source = await Bun.file(new URL("../examples/parallel-order-retry.md", import.meta.url))
+        .text();
+    const stdout = [
+        "Error: Temporal properties were violated.",
+        "State 1: <Initial predicate>",
+        '/\\ phase = "Processing"',
+        "State 2: <Processing_r0_Authorizing_payment_timed_out_Retrying line 18, col 5 to line 21, col 41 of module Spec>",
+        "Back to state 1: <Processing_r0_Retrying_retry_started_Authorizing line 24, col 5 to line 27, col 41 of module Spec>",
+    ].join("\r\n");
+    const result = verify(
+        "order.md",
+        mkDeps({
+            readFile: () => source,
+            runTlc: () => ({ stdout, stderr: "", code: 13 }),
+        }),
+    );
+    if (result.kind !== "failed") throw new Error(result.kind);
+    expect(result.stdout).toContain("1. [*] → Processing");
+    expect(result.stdout).toContain("決済中 --payment_timed_out--> 決済再試行中");
+    expect(result.stdout).toContain("手順 1 の直後に戻る");
+    expect(result.stdout).toContain("決済再試行中 --retry_started--> 決済中");
+});
+
+test("verify: a finite deadlock ends at the last transition without a loop marker", () => {
+    const result = verify(
+        "flat.mmd",
+        mkDeps({
+            readFile: () => "stateDiagram-v2\n[*] --> A\nA --> B : run",
+            runTlc: () => ({
+                code: 11,
+                stderr: "",
+                stdout:
+                    'Error: Deadlock reached.\nState 1: <Initial predicate>\nphase = "A"\nState 2: <A_run_B line 15, col 5 to line 16, col 19 of module Spec>\nphase = "B"',
+            }),
+        }),
+    );
+    if (result.kind !== "failed") throw new Error(result.kind);
+    expect(result.stdout).toContain("2. A --run--> B");
+    expect(result.stdout).not.toContain("繰り返");
+});
+
+test("verify: distinguishes TLC stuttering from an event returning to an earlier state", () => {
+    const result = verify(
+        "spec.mmd",
+        mkDeps({
+            runTlc: () => ({
+                code: 13,
+                stderr: "",
+                stdout:
+                    "Error: Temporal properties were violated.\nState 1: <Initial predicate>\nState 2: Stuttering",
+            }),
+        }),
+    );
+    if (result.kind !== "failed") throw new Error(result.kind);
+    expect(result.stdout).toContain("手順 1 の状態を繰り返す");
+});
+
+test("verify: uses the exact generated action when Mermaid transitions share state and event names", () => {
+    const source = [
+        "stateDiagram-v2",
+        "[*] --> A",
+        "A --> B : tick [fast]",
+        "A --> B : tick [slow]",
+    ].join("\n");
+    const result = verify(
+        "guarded.mmd",
+        mkDeps({
+            readFile: () => source,
+            runTlc: () => ({
+                code: 11,
+                stderr: "",
+                stdout:
+                    "Error: Deadlock reached.\nState 1: <Initial predicate>\nState 2: <A_tick_B_2 line 25, col 5 to line 30, col 4 of module Spec>",
+            }),
+        }),
+    );
+    if (result.kind !== "failed") throw new Error(result.kind);
+    expect(result.stdout).toContain("2. A --tick--> B [slow]");
+});
+
+test("verify: preserves an unmapped TLC header and a loop with no recorded action", () => {
+    const result = verify(
+        "spec.mmd",
+        mkDeps({
+            runTlc: () => ({
+                code: 13,
+                stderr: "",
+                stdout:
+                    "Error: Temporal properties were violated.\nState 1: <Initial predicate>\nState 2: <line 18, col 5 of module Spec>\nBack to state 1",
+            }),
+        }),
+    );
+    if (result.kind !== "failed") throw new Error(result.kind);
+    expect(result.stdout).toContain("2. <line 18, col 5 of module Spec>");
+    expect(result.stdout).toContain("手順 1 の直後に戻る");
+});
+
 test("verify: tool_missing when java not found", () => {
     const result = verify("spec.mmd", mkDeps({ findJava: () => null }));
     assertEquals(result.kind, "tool_missing");
