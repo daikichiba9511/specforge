@@ -121,10 +121,12 @@ bun run verify --strict payment.md
 
 ## 既存のコードから始める
 
-すでに動くコードがある場合は、このリポジトリを Codex で開き、同梱の `spec-behavior` スキルに仕様の抽出を依頼できます。入口となる関数やコマンドを指定すると、Codex がソースとテストを読み、現在の振る舞いとその根拠を Markdown にまとめます。
+このリポジトリを **Claude Code** または **Codex** で開くと、同梱の `spec-behavior` スキルを使って、既存のコードから振る舞い仕様を書き起こせます。調べたい関数やコマンドを指定すると、ソースとテストをもとに、現在の振る舞いとその根拠を Markdown にまとめます。
+
+次は Claude Code での入力例です。Codex では先頭の `/spec-behavior` を `$spec-behavior` に置き換えてください。
 
 ```text
-$spec-behavior src/verify.ts の verify から振る舞い仕様を書き出して。
+/spec-behavior src/verify.ts の verify から振る舞い仕様を書き出して。
 どんなときに TLC を起動するのか、起動に失敗したときは呼び出し元にどう伝わるのかを知りたい。
 実際の呼び出し順と結果も、書き出した仕様と照合して。
 ```
@@ -133,7 +135,7 @@ $spec-behavior src/verify.ts の verify から振る舞い仕様を書き出し�
 
 照合テストでは、ファイル操作やプロセス起動をテスト用の関数に置き換えて `verify` を呼びます。この二種類の失敗を含む 10 通りのケースで、呼び出しの順序と結果が仕様に合うことを確かめています。[抽出した仕様](./docs/verify-execution.md) · [実装との照合テスト](./tests/verify-execution.test.ts)
 
-同じスキルで、新しい仕様の作成や、既存の仕様に対するレビューも依頼できます。[スキルの使い方](./.agents/skills/spec-behavior/SKILL.md)
+書き出した仕様は、手書きの仕様と同じようにターミナルから `bun run verify` で検査できます。同じスキルで、新しい仕様の作成や既存の仕様のレビューも依頼できます。[スキルの使い方](./.agents/skills/spec-behavior/SKILL.md)
 
 ## ほかの形式で使う
 
