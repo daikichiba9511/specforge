@@ -162,6 +162,32 @@ B --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V004").length, 0);
 });
 
+test("V004: disconnected cycles and their downstream states are unreachable", () => {
+    const report = validateOf(`stateDiagram-v2
+[*] --> A
+A --> B
+B --> A
+B --> [*]
+X --> Y
+Y --> X
+Y --> Z`);
+    assertEquals(report.issues.map((i) => [i.code, i.message.match(/state '([^']+)'/)?.[1]]), [
+        ["V004", "X"],
+        ["V004", "Y"],
+        ["V004", "Z"],
+    ]);
+});
+
+test("V004: traversal uses the same first initial state as the model", () => {
+    const report = validateOf(`stateDiagram-v2
+[*] --> A
+A --> [*]
+[*] --> X
+X --> X`);
+    assertEquals(report.issues.length, 1);
+    expect(report.issues[0].message).toContain("state 'X'");
+});
+
 test("V004: alias with reachable transition → no warning", () => {
     const report = validateOf(`stateDiagram-v2
 state "開始" as Start

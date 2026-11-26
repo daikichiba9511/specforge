@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env } from "node:process";
 import { formatParseError, parse } from "./parser.ts";
-import { generateTla } from "./tla.ts";
+import { generateTla, type TlaTransition } from "./tla.ts";
+import type { Region } from "./types.ts";
 import { preprocess } from "./spec_doc.ts";
 
 /**
@@ -152,6 +153,62 @@ function summarizeTlcOutput(stdout: string): string {
     return keep.join("\n");
 }
 
+/** TLC が記録したアクション名を元の矢印に戻す。対応が取れないときは TLC の記述を残す。 */
+function describeTraceAction(
+    header: string,
+    origins: Map<string, TlaTransition>,
+    regionLabels: Map<Region, Map<string, string>>,
+): string {
+    const name = header === "<Initial predicate>" ? "Init" : /^<(\w+)(?:\s|>)/.exec(header)?.[1];
+    if (name === "Stutter") return "終端状態を維持";
+    const origin = name && origins.get(name);
+    if (!origin) return header;
+    const { t, region, context } = origin;
+    let labels = regionLabels.get(region);
+    if (!labels) {
+        labels = new Map();
+        for (const stmt of region.stmts) {
+            if (stmt.kind === "alias" && stmt.description) labels.set(stmt.id, stmt.description);
+        }
+        regionLabels.set(region, labels);
+    }
+    const to = labels.get(t.to) ?? t.to;
+    if (name === "Init") return `[*] → ${to}`;
+    const scope = context.kind === "region"
+        ? `[${context.compositeId} 領域 ${context.regionIdx + 1}] `
+        : "";
+    const event = t.label.event;
+    const args = t.label.eventArgs.length ? `(${t.label.eventArgs.join(", ")})` : "";
+    const arrow = event ? ` --${event}${args}--> ` : " → ";
+    const guard = t.label.guard ? ` [${t.label.guard}]` : "";
+    return scope + (labels.get(t.from) ?? t.from) + arrow + to + guard;
+}
+
+/** 状態番号を TLC と揃えて、デッドロックまでの経路や進行性違反のループを表示する。 */
+function formatCounterexample(stdout: string, origins: Map<string, TlaTransition>): string {
+    const steps: string[] = [];
+    const regionLabels = new Map<Region, Map<string, string>>();
+    for (const line of stdout.split(/\r?\n/)) {
+        const state = /^State (\d+):\s*(.+)$/.exec(line);
+        if (state) {
+            const [, number, header] = state;
+            const action = header.trim() === "Stuttering"
+                ? `手順 ${Number(number) - 1} の状態を繰り返す`
+                : describeTraceAction(header.trim(), origins, regionLabels);
+            steps.push(`  ${number}. ${action}`);
+            continue;
+        }
+        const loop = /^Back to state (\d+)(?::\s*(.*))?\s*$/i.exec(line);
+        if (loop && steps.length) {
+            const action = loop[2]
+                ? `　${describeTraceAction(loop[2].trim(), origins, regionLabels)}`
+                : "";
+            steps.push(`  ↩ 手順 ${loop[1]} の直後に戻る（繰り返し）${action}`);
+        }
+    }
+    return steps.length ? ["反例（仕様上の遷移）", ...steps].join("\n") : "";
+}
+
 /**
  * spec を TLA+ 化 → TLC で検証する。
  *
@@ -197,6 +254,7 @@ export function verify(
         };
     }
 
+    const origins = new Map<string, TlaTransition>();
     const tla = generateTla(
         parsed.value,
         doc.guards,
@@ -205,6 +263,7 @@ export function verify(
         MODULE_NAME,
         bound,
         doc.liveness,
+        (name, source) => origins.set(name, source),
     );
 
     let tempDir: string;
@@ -235,9 +294,10 @@ export function verify(
     if (result.code === 0) {
         return { kind: "verified", stdout: summary || result.stdout };
     }
+    const trace = formatCounterexample(result.stdout, origins);
     return {
         kind: "failed",
-        stdout: summary || result.stdout,
+        stdout: [summary || result.stdout, trace].filter(Boolean).join("\n\n"),
         stderr: result.stderr,
         code: result.code,
     };
