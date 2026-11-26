@@ -4,6 +4,7 @@ node_modules/
 # Build artifacts
 dist/
 bin/
+/examples/quint/Spec.qnt
 
 # Local skill evaluation artifacts
 .agents/skills/spec-behavior-workspace/

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { argv, exit } from "node:process";
 import { formatParseError, parse } from "./parser.ts";
 import { generateCspm } from "./cspm.ts";
+import { generateQuint } from "./quint.ts";
 import { generateTla } from "./tla.ts";
 import { preprocess } from "./spec_doc.ts";
 import { verify } from "./verify.ts";
@@ -10,7 +11,7 @@ import { formatIssue, validate } from "./validate.ts";
 /**
  * CLI 実行結果を表す判別ユニオン。
  *
- * - `success`: 正常完了。`stdout` に CSPm を持ち、exit code は常に 0
+ * - `success`: 正常完了。`stdout` に出力結果 を持ち、exit code は常に 0
  * - `failure`: 何らかの失敗。`stderr` にエラー文、`exitCode` に non-zero
  * - `warnings`: validate() が返した issue を整形した文字列群。stdout/stderr 後に呼び出し側が
  *   stderr へ書く想定。空配列も可
@@ -59,6 +60,7 @@ const docAndDiagramToJson = (
  *
  * フラグ:
  * - `--tla`: CSPm の代わりに TLA+ を出力
+ * - `--quint`: 平坦な状態機械を Quint モジュールとして出力
  * - `--json`: AST + metadata を JSON で出力 (CSPm/TLA+ 出力に代えて)
  * - `--strict`: validation で warning が 1 件でもあれば failure (exit 1) として返す
  * - `--bound=N`: TLA+ の `Domain == 0..N` / CSPm の `nametype VAL = {0..N}` を上書き
@@ -75,6 +77,15 @@ const docAndDiagramToJson = (
  * ```
  */
 export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
+    const useQuint = args.includes("--quint");
+    if (useQuint && (args[0] === "verify" || args.includes("--json") || args.includes("--tla"))) {
+        return {
+            kind: "failure",
+            exitCode: 1,
+            stderr:
+                "--quint is an output format and cannot be combined with verify, --json or --tla",
+        };
+    }
     if (args[0] === "verify") {
         return runVerify(args.slice(1), deps);
     }
@@ -91,7 +102,8 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
         return {
             kind: "failure",
             exitCode: 1,
-            stderr: "usage: specforge [--tla|--json] [--strict] [--bound=N] <spec.mmd|spec.md>\n" +
+            stderr:
+                "usage: specforge [--tla|--json|--quint] [--strict] [--bound=N] <spec.mmd|spec.md>\n" +
                 "       specforge verify [--strict] [--bound=N] <spec.mmd|spec.md>",
         };
     }
@@ -124,6 +136,10 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
     let stdout: string;
     if (useJson) {
         stdout = docAndDiagramToJson(doc, result.value);
+    } else if (useQuint) {
+        const model = generateQuint(result.value, doc, bound);
+        if (!model.ok) return { kind: "failure", exitCode: 1, stderr: model.error, warnings };
+        stdout = model.value;
     } else if (useTla) {
         stdout = generateTla(
             result.value,

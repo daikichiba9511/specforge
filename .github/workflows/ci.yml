@@ -18,3 +18,7 @@ jobs:
             - run: bun run test
             - run: bun run compile
             - run: ./bin/specforge --json --strict docs/behavior.md > /dev/null
+            - name: Test the exported Quint vending model
+              run: |
+                  ./bin/specforge --quint --strict --bound=3 examples/vending-machine.md > examples/quint/Spec.qnt
+                  bunx --bun --package @informalsystems/quint@0.34.0 quint test examples/quint/vending-tests.qnt --backend=typescript --max-samples=20 --seed=0x42

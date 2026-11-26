@@ -242,7 +242,7 @@ stateDiagram-v2
 `<>Terminated`は「いつか処理の完了を表す終端状態へ到達する」というTLA+の式です。
 
 Mermaidブロックの後ろには、ガード定義、共有状態、イベントペイロード、進行性などの表を置けます。
-specforgeは図と表を合わせて読み込み、構文検査、静的検査、TLA+またはCSPmへの変換を行います。
+specforgeは図と表を合わせて読み込み、構文検査、静的検査、TLA+またはCSPmへの変換を行います。平坦な状態機械はQuintにも変換できます。
 
 specforgeは通常の検証にTLA+とTLCを使います。
 CSPmを検査する場合は、別途FDR4というモデル検査器を使います。
@@ -259,7 +259,7 @@ Syntax Tree、AST）**へ変換します。
 構文解析器は、Markdownの表から状態変数、イベントペイロード、進行性も抽出します。
 
 `--json`を使うと、状態機械のAST、ガード名と条件の対応、状態変数、イベントペイロードをJSONとして取得できます。
-同じ中間表現からTLA+とCSPmを生成しているため、独自の静的検査、可視化、別形式への変換も追加しやすい構造です。
+同じ中間表現からTLA+、CSPm、Quintを生成しているため、独自の静的検査、可視化、別形式への変換も追加しやすい構造です。
 
 ## specforgeで検査できること
 
@@ -357,6 +357,29 @@ specforge --tla --bound=3 path/to/spec.md > Spec.tla
 
 `--bound=N`は、状態変数を有限化する`Domain == 0..N`の上限です。
 ガードの境界値へ到達できる最小値から始め、検証したい範囲に合わせて広げます。
+
+### Quintでシナリオを実行する
+
+平坦な状態機械は `--quint` で書き出せます。リポジトリのルートから次を実行すると、自販機のモデルに対して
+「コイン投入 → 返金」と「コイン投入 → 商品選択 → 払い出し」の二つのシナリオをテストできます。
+Quint CLI はテストを実行するときに Bun が取得します。
+
+```bash
+specforge --quint --strict --bound=3 examples/vending-machine.md > examples/quint/Spec.qnt
+bunx --bun --package @informalsystems/quint@0.34.0 quint test examples/quint/vending-tests.qnt --backend=typescript --max-samples=20 --seed=0x42
+```
+
+仕様から想定外の実行列を探すには、常に満たしてほしい条件を指定します。
+
+```bash
+bunx --bun --package @informalsystems/quint@0.34.0 quint run examples/quint/Spec.qnt \
+  --backend=typescript --invariant='phase != "Idle" or state_balance == 0' \
+  --seed=0x42 --max-samples=100 --max-steps=6 --out-itf=refund.itf.json
+```
+
+この例は反例を見つけて終了コード 1 を返し、状態列を `refund.itf.json` に保存します。
+返金イベントは状態を `Idle` に戻しますが、アクション名 `return_all` に残高の更新式は含まれていないためです。
+`quint run` は指定した範囲で実行列をサンプリングします。複合状態や進行性を含む仕様のモデル検査には次の `verify` を使います。
 
 ### TLCまで実行する
 

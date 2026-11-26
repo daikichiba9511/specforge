@@ -83,6 +83,7 @@ bun run lint       # lint
 bun run check      # type check
 bun run cli examples/traffic-light.mmd          # CSPm 出力 (validation warnings は stderr)
 bun run cli --tla examples/traffic-light.mmd    # TLA+ 出力
+bun run cli --quint --bound=3 examples/vending-machine.md  # 平坦な仕様を Quint へ変換
 bun run cli --json examples/traffic-light.mmd   # AST + metadata の JSON 出力
 bun run cli --strict examples/traffic-light.mmd # validation warning を error 扱い (exit 1)
 bun run cli --bound=3 spec.md                   # Domain/VAL の値域を 0..3 に

@@ -17,6 +17,9 @@
 | [internal-events.md](./internal-events.md)                       | 小     | `internal_`命名規則と状態変数                        | 35生成、10種類           |
 | [parallel-order-retry-fixed.md](./parallel-order-retry-fixed.md) | 中     | 決済と在庫確保の並行処理、有限回の再試行、進行性     | 31生成、16種類           |
 
+自販機の仕様には、返金と払い出しを試す [Quint のシナリオテスト](./quint/vending-tests.qnt) がある。
+モデルの生成手順は [README の Quint の節](../README.md#quintでシナリオを実行する) を参照。
+
 ## 意図的に問題を残した例
 
 | 例                                                   | 問題                                           | 期待する検出結果                                        |

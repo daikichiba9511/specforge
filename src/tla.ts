@@ -2,7 +2,8 @@ import { isPseudoState } from "./types.ts";
 import type { Diagram, Region, Stmt } from "./types.ts";
 import type { LivenessProp } from "./spec_doc.ts";
 
-type Transition = Extract<Stmt, { kind: "transition" }>;
+import { boundStateVarsForTransition, topLevelFlow } from "./transitions.ts";
+import type { Transition } from "./transitions.ts";
 type Composite = Extract<Stmt, { kind: "composite" }>;
 
 // 各 transition が「トップレベル」か「composite C の region #N」のどちらに属するか。
@@ -66,24 +67,6 @@ const analyze = (diagram: Diagram): Analysis => {
     return { transitions, composites, topStates, regionEntries };
 };
 
-const findInitialState = (diagram: Diagram): string | null => {
-    for (const region of diagram.regions) {
-        for (const stmt of region.stmts) {
-            if (stmt.kind === "transition" && isPseudoState(stmt.from)) return stmt.to;
-        }
-    }
-    return null;
-};
-
-const collectTerminalStates = (analysis: Analysis): Set<string> => {
-    const terminal = new Set<string>();
-    for (const { t, context } of analysis.transitions) {
-        if (context.kind !== "top") continue;
-        if (isPseudoState(t.to) && !isPseudoState(t.from)) terminal.add(t.from);
-    }
-    return terminal;
-};
-
 // CSPm/C 風の演算子 (`==`, `!=`, `&&`, `||`) を TLA+ 流 (`=`, `/=`, `/\\`, `\\/`) に置換する。
 const toTlaOperators = (expr: string): string =>
     expr
@@ -139,14 +122,6 @@ type EmitContext = {
     guards: Map<string, string>;
     eventPayloads: Map<string, string[]>;
     used: Map<string, number>;
-};
-
-// transition の event payload と state var の交差 (= この遷移で更新される state var)。
-const boundStateVarsForTransition = (t: Transition, ctx: EmitContext): string[] => {
-    if (t.label.event === null) return [];
-    const payload = ctx.eventPayloads.get(t.label.event);
-    if (!payload) return [];
-    return payload.filter((f) => ctx.stateVars.includes(f));
 };
 
 // 1 つの action body を組み立てる共通骨格。
@@ -342,8 +317,7 @@ export const generateTla = (
     liveness: LivenessProp[] = [],
 ): string => {
     const analysis = analyze(diagram);
-    const initialState = findInitialState(diagram);
-    const terminal = collectTerminalStates(analysis);
+    const { initialState, terminal } = topLevelFlow(diagram);
 
     const regionVars = allRegionVars(analysis.composites);
     const allVars = ["phase", ...stateVars, ...regionVars];
