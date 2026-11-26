@@ -9,22 +9,25 @@ import { isPseudoState } from "../src/types.ts";
 import { validate } from "../src/validate.ts";
 import { verify, type VerifyDeps } from "../src/verify.ts";
 
-// Only the environment is scripted. The order of calls and the final outcome come from verify().
-const observeVerify = (scenario: string): string[] => {
+/** 外部操作の成否だけをシナリオで指定し、`verify` が実際に呼んだ順序と最終結果を記録する。 */
+function observeVerify(scenario: string): string[] {
     const events: string[] = [];
     const fault = new Error("simulated external failure");
-    const record = <T>(event: string, value: T): T => {
+    /** 外部操作のイベントを記録してから、指定したテスト用の値を返す。 */
+    function record<T>(event: string, value: T): T {
         events.push(event);
         return value;
-    };
-    const fail = (event: string): never => {
+    }
+    /** 失敗した操作を記録してから、このシナリオで識別できる例外を投げる。 */
+    function fail(event: string): never {
         events.push(event);
         throw fault;
-    };
-    const write = (operation: string) => {
+    }
+    /** シナリオで指定した書き込みだけを失敗させ、他の書き込みは成功として記録する。 */
+    function write(operation: string) {
         if (scenario === operation + "_error") fail(scenario);
         events.push(operation + "_ok");
-    };
+    }
     const deps: VerifyDeps = {
         readFile: () => {
             if (scenario === "read_error") return fail(scenario);
@@ -65,7 +68,7 @@ const observeVerify = (scenario: string): string[] => {
         events.push("exception");
     }
     return events;
-};
+}
 
 test("verify follows the documented call order and outcomes on success and failure", () => {
     const path = new URL("../docs/verify-execution.md", import.meta.url);

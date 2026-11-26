@@ -15,6 +15,6 @@
  * }
  * ```
  */
-export const exhaustive = (x: never): never => {
+export function exhaustive(x: never): never {
     throw new Error(`unreachable: unhandled variant ${JSON.stringify(x)}`);
-};
+}

@@ -9,18 +9,26 @@ import type { Diagram } from "./types.ts";
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const COMPARISON = /^([A-Za-z_]\w*|-?\d+)\s*(==|!=|<=|>=|<|>)\s*([A-Za-z_]\w*|-?\d+)$/;
 
-const stateVar = (name: string): string => `state_${name}`;
-const payloadField = (fields: string[], name: string, binding: string): string =>
-    fields.length === 1 ? binding : `${binding}._${fields.indexOf(name) + 1}`;
+/** 利用者の状態変数に `state_` を付け、モデルが使用する `phase` などの名前と区別する。 */
+function stateVar(name: string): string {
+    return `state_${name}`;
+}
+/** 単一フィールドは束縛した値をそのまま使う。複数の場合は宣言順に `_1` から始まるタプル要素を参照する。 */
+function payloadField(fields: string[], name: string, binding: string): string {
+    return fields.length === 1 ? binding : `${binding}._${fields.indexOf(name) + 1}`;
+}
 
-const group = (operator: "all" | "any", terms: string[], indent = "    "): string =>
-    `${operator} {\n${terms.map((term) => `${indent}    ${term},`).join("\n")}\n${indent}}`;
+/** 条件やアクションを Quint の `all` または `any` ブロックにまとめ、指定した深さに字下げする。 */
+function group(operator: "all" | "any", terms: string[], indent = "    "): string {
+    return `${operator} {\n${terms.map((term) => `${indent}    ${term},`).join("\n")}\n${indent}}`;
+}
 
-const renderGuard = (
+/** 整数比較のガードを Quint の式に変換する。ペイロードで更新する変数は候補値を参照し、解釈できない式はエラーとして返す。 */
+function renderGuard(
     transition: Transition,
     doc: SpecDoc,
     fields: string[],
-): Result<string | null, string> => {
+): Result<string | null, string> {
     const tag = transition.label.guard;
     if (!tag) return ok(null);
     const expression = doc.guards.get(tag) ?? tag;
@@ -35,14 +43,15 @@ const renderGuard = (
         else return err(`${context}: unknown state variable '${token}'`);
     }
     return ok(`${operands[0]} ${match[2]} ${operands[1]}`);
-};
+}
 
-const renderTransition = (
+/** 一つの遷移に対応する Quint アクションを作る。ペイロードがある場合はガードを満たす候補から値を選ぶ。 */
+function renderTransition(
     name: string,
     t: Transition,
     doc: SpecDoc,
     bound: number,
-): Result<string, string> => {
+): Result<string, string> {
     const fields = boundStateVarsForTransition(t, doc);
     if (new Set(fields).size !== fields.length) {
         return err(`Quint: repeated payload field in event '${t.label.event}'`);
@@ -69,13 +78,17 @@ const renderTransition = (
         `        ${group("all", conditions, "        ")}`,
         "    }",
     ].join("\n"));
-};
+}
 
-export const generateQuint = (
+/**
+ * 単一の平坦な領域を Quint モジュールに変換し、ペイロードの値域を `0..bound` に制限する。
+ * 複合状態や時相プロパティなど未対応の入力はエラーとして返す。
+ */
+export function generateQuint(
     diagram: Diagram,
     doc: SpecDoc,
     bound: number,
-): Result<string, string> => {
+): Result<string, string> {
     if (doc.liveness.length > 0) {
         return err(
             `Quint export does not support temporal property '${
@@ -135,4 +148,4 @@ export const generateQuint = (
         : group("all", ["false", ...unchanged]);
     blocks.push(`    action step = ${step}`);
     return ok(`module Spec {\n${blocks.join("\n\n")}\n}`);
-};
+}

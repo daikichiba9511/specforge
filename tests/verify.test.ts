@@ -7,19 +7,22 @@ const VALID_SPEC = `stateDiagram-v2
 A --> B
 B --> A`;
 
-const mkDeps = (overrides: Partial<VerifyDeps> = {}): VerifyDeps => ({
-    readFile: () => VALID_SPEC,
-    makeTempDir: () => "/tmp/test",
-    writeFile: () => {},
-    runTlc: () => ({
-        stdout: "Model checking completed. No error has been found.",
-        stderr: "",
-        code: 0,
-    }),
-    findJava: () => "/usr/bin/java",
-    findTlaJar: () => "/path/to/tla2tools.jar",
-    ...overrides,
-});
+/** ファイル操作と TLC の実行をテスト用に置き換え、対象のシナリオで異なる操作だけを差し替える。 */
+function mkDeps(overrides: Partial<VerifyDeps> = {}): VerifyDeps {
+    return {
+        readFile: () => VALID_SPEC,
+        makeTempDir: () => "/tmp/test",
+        writeFile: () => {},
+        runTlc: () => ({
+            stdout: "Model checking completed. No error has been found.",
+            stderr: "",
+            code: 0,
+        }),
+        findJava: () => "/usr/bin/java",
+        findTlaJar: () => "/path/to/tla2tools.jar",
+        ...overrides,
+    };
+}
 
 test("verify: returns verified when TLC succeeds (code 0)", () => {
     const result = verify("spec.mmd", mkDeps());

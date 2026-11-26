@@ -4,13 +4,16 @@ import { parse } from "../src/parser.ts";
 import { generateTla } from "../src/tla.ts";
 import { expectOk } from "./_helpers.ts";
 
-const tlaOf = (
+/** テストの Mermaid 入力をパースし、指定した補助情報を使って比較用の TLA+ を生成する。 */
+function tlaOf(
     src: string,
     guards?: Map<string, string>,
     stateVars?: string[],
     eventPayloads?: Map<string, string[]>,
     moduleName?: string,
-): string => generateTla(expectOk(parse(src)), guards, stateVars, eventPayloads, moduleName);
+): string {
+    return generateTla(expectOk(parse(src)), guards, stateVars, eventPayloads, moduleName);
+}
 
 test("emits MODULE header + EXTENDS + footer", () => {
     const out = tlaOf(`stateDiagram-v2

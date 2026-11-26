@@ -33,29 +33,37 @@ const RE_LABEL = /^(?<event>[^[/]*?)\s*(?:\[(?<guard>[^\]]+)\])?\s*(?:\/\s*(?<ac
 // 引数なしの `timer` / `timer()` 両方を受理する。
 const RE_EVENT_NAME = /^(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?:\((?<args>[^)]*)\))?$/;
 
-const stripComment = (line: string): string => {
+/** 最初の `%%` 以降を、行の残りとともにコメントとして取り除く。 */
+function stripComment(line: string): string {
     const idx = line.indexOf("%%");
     return idx >= 0 ? line.substring(0, idx).trimEnd() : line;
-};
+}
 
-const advance = (s: ParserState): ParserState => ({ ...s, pos: s.pos + 1 });
+/** 入力行を共有したまま、読み取り位置だけを1行進めた状態を返す。 */
+function advance(s: ParserState): ParserState {
+    return { ...s, pos: s.pos + 1 };
+}
 
-const skipBlank = (s: ParserState): ParserState => {
+/** 空白行を読み飛ばし、次の文または入力末尾を指す状態を返す。 */
+function skipBlank(s: ParserState): ParserState {
     let cur = s;
     while (cur.pos < cur.lines.length && cur.lines[cur.pos].trim() === "") {
         cur = advance(cur);
     }
     return cur;
-};
+}
 
-const mkError = (s: ParserState, message: string): ParseError => ({
-    kind: "ParseError",
-    message,
-    line: s.pos + 1,
-});
+/** 内部の読み取り位置を、利用者向けの1始まりの行番号に変換してエラーに添える。 */
+function mkError(s: ParserState, message: string): ParseError {
+    return {
+        kind: "ParseError",
+        message,
+        line: s.pos + 1,
+    };
+}
 
-// action のトップレベル `,` で分割。`f(x, y)` のような引数括弧内の `,` は保持。
-const splitActions = (raw: string): string[] => {
+/** 括弧の外側のカンマでアクションを分ける。`f(x, y)` の引数を区切るカンマは保持する。 */
+function splitActions(raw: string): string[] {
     const result: string[] = [];
     let depth = 0;
     let start = 0;
@@ -72,12 +80,13 @@ const splitActions = (raw: string): string[] => {
     const last = raw.slice(start).trim();
     if (last) result.push(last);
     return result;
-};
+}
 
-// event 表記 `name(arg1, arg2)` または `name` から bare 名と引数列を取り出す。
-// 不正形式 (例: 括弧の対応が取れない、 識別子として無効) なら verbatim を name に入れ、 args は空。
-// 呼び出し側で「event === null」と区別するため、 入力が null/空のときは name=null を返す。
-const parseEventName = (raw: string | null): { name: string | null; args: string[] } => {
+/**
+ * `name(arg1, arg2)` をイベント名と引数に分ける。
+ * 空欄はイベントなしとして扱い、書式が合わない文字列はそのまま名前に残す。
+ */
+function parseEventName(raw: string | null): { name: string | null; args: string[] } {
     if (!raw) return { name: null, args: [] };
     const m = RE_EVENT_NAME.exec(raw);
     if (!m?.groups?.name) return { name: raw, args: [] };
@@ -86,9 +95,10 @@ const parseEventName = (raw: string | null): { name: string | null; args: string
         ? []
         : argsRaw.split(",").map((s) => s.trim()).filter(Boolean);
     return { name: m.groups.name, args };
-};
+}
 
-const parseLabel = (raw: string): Label => {
+/** 遷移ラベルからイベント、引数、ガード、アクションを読み取る。空のラベルは無条件の遷移を表す。 */
+function parseLabel(raw: string): Label {
     const trimmed = raw.trim();
     if (!trimmed) return { event: null, eventArgs: [], guard: null, actions: [] };
     // RE_LABEL は trimmed が非空ならば必ず match する構造 (全 group が optional)。
@@ -101,9 +111,10 @@ const parseLabel = (raw: string): Label => {
         guard: groups.guard?.trim() ?? null,
         actions: splitActions(groups.action ?? ""),
     };
-};
+}
 
-const parseStmt = (state: ParserState): Step<Stmt> => {
+/** 現在行から文を1件読み取り、次の読み取り位置を返す。複合状態の場合は、その閉じ括弧までを1件として消費する。 */
+function parseStmt(state: ParserState): Step<Stmt> {
     const trimmed = state.lines[state.pos].trim();
 
     const compositeGroups = RE_COMPOSITE.exec(trimmed)?.groups;
@@ -158,9 +169,10 @@ const parseStmt = (state: ParserState): Step<Stmt> => {
     }
 
     return err(mkError(state, `unrecognized statement: '${trimmed}'`));
-};
+}
 
-const parseRegions = (state: ParserState, depth: number): Step<Region[]> => {
+/** `--` で並行領域を区切って読む。最上位は入力末尾まで、複合状態の内部は対応する `}` までを消費する。 */
+function parseRegions(state: ParserState, depth: number): Step<Region[]> {
     let cur = state;
     const regions: Region[] = [];
     let current: Stmt[] = [];
@@ -193,7 +205,7 @@ const parseRegions = (state: ParserState, depth: number): Step<Region[]> => {
     if (depth > 0) return err(mkError(cur, "unexpected EOF, expected '}'"));
     regions.push({ stmts: current });
     return ok({ state: cur, value: regions });
-};
+}
 
 /**
  * Mermaid stateDiagram-v2 入力を specforge の AST にパースする。
@@ -210,7 +222,7 @@ const parseRegions = (state: ParserState, depth: number): Step<Region[]> => {
  * if (r.ok) console.log(r.value.regions[0].stmts.length); // 1
  * ```
  */
-export const parse = (input: string): Result<Diagram, ParseError> => {
+export function parse(input: string): Result<Diagram, ParseError> {
     const initial: ParserState = {
         lines: input.split("\n").map(stripComment),
         pos: 0,
@@ -224,10 +236,12 @@ export const parse = (input: string): Result<Diagram, ParseError> => {
     const regions = parseRegions(afterHeader, 0);
     if (!regions.ok) return regions;
     return ok({ type: "stateDiagram-v2", regions: regions.value.value });
-};
+}
 
 /**
  * {@link ParseError} を `L<line>: <message>` 形式の 1 行に整形する。
  * CLI / log 出力の表示用ヘルパ。
  */
-export const formatParseError = (e: ParseError): string => `L${e.line}: ${e.message}`;
+export function formatParseError(e: ParseError): string {
+    return `L${e.line}: ${e.message}`;
+}

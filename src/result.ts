@@ -22,10 +22,14 @@ export type Result<T, E> =
  * 成功 Result を生成するファクトリ。
  * 戻り値の型は `Result<T, never>` で、widening は呼び出し側で起こる。
  */
-export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
+export function ok<T>(value: T): Result<T, never> {
+    return { ok: true, value };
+}
 
 /**
  * 失敗 Result を生成するファクトリ。
  * 戻り値の型は `Result<never, E>` で、widening は呼び出し側で起こる。
  */
-export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
+export function err<E>(error: E): Result<never, E> {
+    return { ok: false, error };
+}

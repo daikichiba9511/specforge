@@ -62,21 +62,23 @@ const RE_LIVENESS_HEADING =
 // payload セル中の `{a, b, c}` 部分を抽出 (周囲のコメント等は無視)。
 const RE_PAYLOAD_BRACES = /\{([^}]*)\}/;
 
-const stripBackticks = (s: string): string => {
+/** 表のセルの前後の空白を除き、全体がバッククォートで囲まれていれば内側の文字列を取り出す。 */
+function stripBackticks(s: string): string {
     const t = s.trim();
     return t.startsWith("`") && t.endsWith("`") && t.length >= 2 ? t.slice(1, -1).trim() : t;
-};
+}
 
-const parseTableRow = (line: string): string[] => {
+/** 行の両端の縦棒を除いて Markdown の表をセルに分け、各セルの前後の空白を取り除く。 */
+function parseTableRow(line: string): string[] {
     const trimmed = line.trim().replace(/^\|/, "").replace(/\|\s*$/, "");
     return trimmed.split("|").map((c) => c.trim());
-};
+}
 
 /**
  * 入力 markdown 内の最初の `stateDiagram-v2` Mermaid ブロック本体を返す。
  * 該当ブロックが無ければ `null` (sequenceDiagram のみ等のケース)。
  */
-export const extractMermaid = (input: string): string | null => {
+export function extractMermaid(input: string): string | null {
     const lines = input.split("\n");
     let i = 0;
     while (i < lines.length) {
@@ -93,7 +95,7 @@ export const extractMermaid = (input: string): string | null => {
         i++;
     }
     return null;
-};
+}
 
 /**
  * `### ガード定義` (もしくは `Guards` を含む見出し) の直後の markdown 表から
@@ -105,7 +107,7 @@ export const extractMermaid = (input: string): string | null => {
  * - セル前後の backtick (`` `catalog_ok` ``) は剥がされる
  * - 表の終了は「`|` で始まらない行」で判定 (空行 / 別 heading / 他テキスト)
  */
-export const extractGuards = (input: string): Map<string, string> => {
+export function extractGuards(input: string): Map<string, string> {
     const guards = new Map<string, string>();
     const lines = input.split("\n");
 
@@ -130,7 +132,7 @@ export const extractGuards = (input: string): Map<string, string> => {
         i++;
     }
     return guards;
-};
+}
 
 /**
  * `### 共有状態` (もしくは `State variable(s)` 等を含む見出し) の直後の markdown 表から
@@ -141,7 +143,7 @@ export const extractGuards = (input: string): Map<string, string> => {
  * - 表の 1 列目 = 変数名 (backtick 任意)
  * - 重複は除去、出現順を保持
  */
-export const extractStateVars = (input: string): string[] => {
+export function extractStateVars(input: string): string[] {
     const vars: string[] = [];
     const seen = new Set<string>();
     const lines = input.split("\n");
@@ -169,7 +171,7 @@ export const extractStateVars = (input: string): string[] => {
         i++;
     }
     return vars;
-};
+}
 
 /**
  * `### イベント契約` (もしくは `Event contracts?` を含む見出し) の直後の markdown 表から
@@ -182,7 +184,7 @@ export const extractStateVars = (input: string): string[] => {
  * - payload セルに `{...}` が無い (or "なし" / "—" 等) → 空配列
  * - `{...}` 周辺の補足コメントは無視 (`` `{batch_id, catalog_size}` (説明...) `` のような表記を許容)
  */
-export const extractEventPayloads = (input: string): Map<string, string[]> => {
+export function extractEventPayloads(input: string): Map<string, string[]> {
     const result = new Map<string, string[]>();
     const lines = input.split("\n");
 
@@ -211,16 +213,17 @@ export const extractEventPayloads = (input: string): Map<string, string[]> => {
         i++;
     }
     return result;
-};
+}
 
-const parsePayloadCell = (cell: string): string[] => {
+/** ペイロード欄の最初の波括弧からフィールド名を順に取り出す。括弧がない場合は空配列を返す。 */
+function parsePayloadCell(cell: string): string[] {
     const m = RE_PAYLOAD_BRACES.exec(cell);
     if (!m) return [];
     return m[1]
         .split(",")
         .map((f) => stripBackticks(f.trim()))
         .filter((f) => f.length > 0);
-};
+}
 
 /**
  * `### Liveness` (もしくは `Temporal property` / `進行性` 等を含む見出し) の直後の markdown
@@ -233,7 +236,7 @@ const parsePayloadCell = (cell: string): string[] => {
  *
  * 表が見つからない / 空なら空配列。 生成側はこの場合 fairness / property は emit しない。
  */
-export const extractLiveness = (input: string): LivenessProp[] => {
+export function extractLiveness(input: string): LivenessProp[] {
     const props: LivenessProp[] = [];
     const lines = input.split("\n");
 
@@ -258,13 +261,13 @@ export const extractLiveness = (input: string): LivenessProp[] => {
         i++;
     }
     return props;
-};
+}
 
 /**
  * `.md` / `.mmd` どちらの入力でも適切に前処理した {@link SpecDoc} を返す。
  * Mermaid block が見つからない場合は入力そのものを Mermaid として扱う (= 生 `.mmd`)。
  */
-export const preprocess = (input: string): SpecDoc => {
+export function preprocess(input: string): SpecDoc {
     const extracted = extractMermaid(input);
     if (extracted === null) {
         return {
@@ -282,4 +285,4 @@ export const preprocess = (input: string): SpecDoc => {
         eventPayloads: extractEventPayloads(input),
         liveness: extractLiveness(input),
     };
-};
+}

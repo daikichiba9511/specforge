@@ -21,8 +21,9 @@ const EXPECTATIONS = [
     "TLC exits successfully and reports that no error was found",
 ] as const;
 
-const collectTransitions = (regions: Region[]): Transition[] =>
-    regions.flatMap((region) =>
+/** 評価対象の遷移を、複合状態の内部も含めて仕様の記述順に列挙する。 */
+function collectTransitions(regions: Region[]): Transition[] {
+    return regions.flatMap((region) =>
         region.stmts.flatMap((stmt): Transition[] =>
             stmt.kind === "transition"
                 ? [stmt]
@@ -31,15 +32,21 @@ const collectTransitions = (regions: Region[]): Transition[] =>
                 : []
         )
     );
+}
 
-const containsHeading = (markdown: string, patterns: readonly RegExp[]): boolean =>
-    patterns.some((pattern) => pattern.test(markdown));
+/** 見出しの候補パターンのうち一つでも評価対象の文書に一致するかを調べる。 */
+function containsHeading(markdown: string, patterns: readonly RegExp[]): boolean {
+    return patterns.some((pattern) => pattern.test(markdown));
+}
 
-const makeResult = (text: string, passed: boolean, evidence: string): ExpectationResult => ({
-    text,
-    passed,
-    evidence,
-});
+/** 個々の評価項目について、判定を説明できるように合否と根拠を一緒に記録する。 */
+function makeResult(text: string, passed: boolean, evidence: string): ExpectationResult {
+    return {
+        text,
+        passed,
+        evidence,
+    };
+}
 
 const outputDirArg = process.argv[2];
 if (!outputDirArg) {
