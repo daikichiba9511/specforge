@@ -60,7 +60,23 @@ bun run verify --strict examples/parallel-order-retry-fixed.md
 
 ## 自分の仕様を書く
 
-どんな出来事で状態が変わり、処理がどう終わるかを記述したものが**振る舞い仕様**です。まずは、注文処理のうち「決済は成功か失敗のどちらかで終わる」ことだけを確かめてみましょう。次の Markdown を `payment.md` として保存します。
+どんな出来事で状態が変わり、処理がどう終わるかを記述したものが**振る舞い仕様**です。まずは、注文処理のうち「決済は成功か失敗のどちらかで終わる」ことだけを確かめてみましょう。
+
+```mermaid
+stateDiagram-v2
+    [*] --> Paying
+    Paying --> Paid : approved
+    Paying --> Retrying : timed_out
+    Retrying --> Paid : approved
+    Retrying --> Failed : timed_out
+    Paid --> [*]
+    Failed --> [*]
+```
+
+矢印に付いた `approved` や `timed_out` は、状態が変わるきっかけです。`Paid --> [*]` と `Failed --> [*]` は処理の終了を表します。`<>Terminated` は、状態とその変化を記述する言語 TLA+ で「いずれ終了状態に到達する」という意味です。このように、期待することがいつか起きる性質を**進行性**と呼びます。
+
+<details>
+<summary><code>payment.md</code> に保存する Markdown を表示</summary>
 
 ````markdown
 ```mermaid
@@ -81,7 +97,9 @@ stateDiagram-v2
 | Termination | <>Terminated |
 ````
 
-矢印の右にある `approved` や `timed_out` は、状態が変わるきっかけです。`Paid --> [*]` と `Failed --> [*]` は処理の終了を表します。表の `<>Terminated` は、状態とその変化を記述する言語 TLA+ で「いずれ終了状態に到達する」という意味です。このように、期待することがいつか起きる性質を**進行性**と呼びます。
+</details>
+
+上の Markdown を `payment.md` として保存し、次のコマンドで検査します。
 
 ```bash
 bun run verify --strict payment.md
