@@ -1,375 +1,142 @@
 # specforge
 
-**振る舞い仕様**は、システムがどの状態で、どの出来事を受けると、何をして次の状態へ進むかを定義した文書です。
-specforgeは、Mermaid
-`stateDiagram-v2`で書いた振る舞い仕様を、機械が解析できる形式仕様へ変換するコマンドラインツールです。
-
-**モデル検査**は、仕様で定義した状態を機械的に探索し、満たすべき性質に違反する状態遷移を探す手法です。
-specforgeは通常、システムの状態変化を論理式で記述する言語であるTLA+を生成し、そのモデル検査器であるTLCへ渡します。
-プロセス間のイベント列を記述するCSPm形式への変換にも対応しており、生成結果はCSPmのモデル検査器であるFDR4へ渡せます。
-
-個人の仕様作成を支えるために開発していますが、リポジトリをクローンしてTypeScriptの実行環境であるBunでビルドすれば、単体の実行ファイルとして利用できます。
-現在はパッケージレジストリやリリースバイナリでは配布していません。
-
-## 振る舞い仕様が必要になる場面
-
-APIの型やデータ構造は、システムが何を受け渡すかを定義します。
-しかし、現在の状態やそれまでに受け取ったイベントに反応して応答が変わる**リアクティブな振る舞い**は、入出力の型だけでは定義できません。
-
-注文の取消、失敗後の再試行、タイムアウトからの回復、複数の処理が並行して進むワークフローでは、同じイベントでも現在の状態によって許可する遷移が変わります。
-正常系の処理手順だけを文章で並べると、拒否や取消をどの状態で受け付けるのか、失敗後にどこへ戻るのか、終了できない経路がないかを追いにくくなります。
-
-振る舞い仕様は、状態、イベント（起きた出来事）、ガード（遷移を許可する条件）、アクション（遷移時の作用）を一つの状態機械として定義します。
-Mermaidで記述すると、文章中に分散しやすい「どの状態で何を受け取り、次にどこへ移るか」を、ノードと矢印として同じ画面で追えます。
-状態を入れ子にして共通の振る舞いをまとめる階層化と、独立して並行に進む状態を分ける直交領域を使えば、動作モードの切替えと並行する振る舞いを、状態の組合せをすべて列挙せずに表現できます。
-
-状態や履歴に依存するリアクティブ系と、現在の入力だけで出力が決まる変換系の分け方は[振る舞い仕様とは何か](./docs/behavior-specs.md)で説明しています。
-同じ文書では、仕様が選んだ範囲内で状態とイベントの組合せに解釈の空白を残さない、という完全性の考え方も説明しています。
-有限状態機械と拡張状態機械、TLA+とTLC、CSPmとFDR4の理論的な背景は[基本概念](./docs/concepts.md)を参照してください。
-同じ文書では、処理の途中で遷移を選べず停止するデッドロックと、処理の完了を表す状態へいずれ進む終端到達も説明しています。
-
-## 並行する注文処理で見落としを発見する
-
-注文の確定前に、決済と在庫確保を並行して進める処理を考えます。
-要求を文章にすると、「両方が成功したら注文を確定し、失敗したら失敗結果を返し、決済がタイムアウトしたら再試行する」と簡潔に書けます。
-しかし、この文章だけでは再試行を何回で打ち切るのか、失敗として終了する経路が必要なのかは決まりません。
-
-次の図では、在庫を確保できても、決済中と決済再試行中を何度でも往復できます。
-二つの処理は独立して進むため、開発者が正常系を一つずつ追うだけでは、特定の順序でだけ現れる問題を見落としやすくなります。
+specforge は、Markdown に書いた Mermaid の状態図から、「決済の再試行が続くと注文がいつまでも終わらない」といった設計上の見落としを見つけます。
 
 ```mermaid
-%%{init: {"theme": "dark"}}%%
-flowchart LR
-    subgraph Processing[注文処理中]
-        direction LR
-        subgraph Payment[決済]
-            Authorizing[決済中]
-            Retrying[決済再試行中]
-            PaymentDone[決済完了]
-            Authorizing -->|タイムアウト| Retrying
-            Retrying -->|再試行開始| Authorizing
-            Authorizing -->|承認| PaymentDone
-        end
-        subgraph Inventory[在庫]
-            Reserving[在庫確保中]
-            InventoryDone[在庫確保完了]
-            Reserving -->|確保| InventoryDone
-        end
-    end
+flowchart TB
+    accTitle: 注文処理が終わらない例
+    accDescr: 決済が承認されると決済完了へ進む。タイムアウトすると再試行待ちに移り、決済中に戻る。この二つの状態は何度でも往復できる。
+    Paying["決済中"] -->|承認| Paid["決済完了"]
+    Paying ==>|タイムアウト| Retrying["再試行待ち"]
+    Retrying ==>|再試行| Paying
 ```
 
-[問題を残した振る舞い仕様](./examples/parallel-order-retry.md)は、構文にも状態間の行き止まりにも問題がないため、specforgeの静的検査を通過します。
-ところが、「注文処理はいずれ終了する」と宣言してTLCで検査すると、進行性の違反が見つかります。
+図は、決済と在庫確保を並行して進める注文処理から、決済の部分だけを抜き出したものです。在庫を確保でき、決済も承認されれば注文は完了します。ところが、決済がタイムアウトし続けると、処理は太い矢印に沿って同じ二つの状態を行き来します。在庫は確保できていても、注文の結果は決まりません。
 
-```console
-$ specforge verify --strict examples/parallel-order-retry.md
-verification failed (code 13)
+specforge では、図と同じ Markdown に「注文処理はいつか終了する」という条件を書けます。`verify` を実行すると、モデル検査器の TLC が仕様上で起こり得る状態の変化を探索し、条件に反する経路（**反例**）があるかを調べます。
 
-Error: Temporal properties were violated.
-Error: The following behavior constitutes a counter-example:
-```
+## 注文のサンプルで試す
 
-この違反を発生させる実行を、仕様上の状態とイベントで追うと次のようになります。
-
-```text
-注文処理を開始する
-→ 在庫の確保が完了する
-→ 決済がタイムアウトする
-→ 決済を再試行する
-→ 再び決済がタイムアウトする
-→ 同じ遷移を繰り返し、注文処理が終了しない
-```
-
-この実行は、次に進めなくなるデッドロックではありません。
-決済の再試行によって状態は変わり続けますが、注文処理の終了には到達しません。
-形式検証によって、再試行回数に上限を設ける、利用者が中止できるようにする、外部サービスがいつか応答するという前提を置く、といった設計判断が未確定であることが分かります。
-
-通常のテストでは、開発者が「一回タイムアウトした後に成功する」といった具体的な順序を選びます。
-TLCは有限化した状態遷移のグラフを探索するため、決済中と再試行中を往復し続ける循環も検査対象になります。
-これは実装を使ったテストの代わりではなく、テストケースを作る前の仕様に終了しない経路が残っていないかを調べる検査です。
-
-次の修正版は、決済を一回だけ再試行し、二回目のタイムアウト後は決済失敗として決済領域を終了します。
-在庫領域も完了すると、注文処理全体が`Finished`へ進みます。
-この例の`Finished`は注文の成立ではなく、成功または失敗の結果が確定して処理を終了できる状態を表します。
-
-```mermaid
-stateDiagram-v2
-%%{init: {"theme": "dark"}}%%
-    state Processing {
-        state "最初の決済試行" as FirstAuthorization
-        state "決済再試行" as RetryAuthorization
-        state "決済完了" as PaymentDone
-        state "決済失敗" as PaymentFailed
-
-        [*] --> FirstAuthorization
-        FirstAuthorization --> PaymentDone : payment_authorized
-        FirstAuthorization --> RetryAuthorization : payment_timed_out / retry_payment
-        RetryAuthorization --> PaymentDone : payment_authorized
-        RetryAuthorization --> PaymentFailed : payment_timed_out / record_payment_failure
-        PaymentDone --> [*]
-        PaymentFailed --> [*]
-
-        --
-
-        state "在庫確保中" as Reserving
-        state "在庫確保完了" as InventoryDone
-
-        [*] --> Reserving
-        Reserving --> InventoryDone : inventory_reserved
-        InventoryDone --> [*]
-    }
-
-    state "処理終了" as Finished
-
-    [*] --> Processing
-    Processing --> Finished : / report_result
-    Finished --> [*]
-```
-
-### 進行性
-
-| 性質の名前    | TLA+式         |
-| ------------- | -------------- |
-| `Termination` | `<>Terminated` |
-
-この[終了経路を追加した仕様](./examples/parallel-order-retry-fixed.md)を再検査すると、宣言した有限のモデルでは、終了しない実行が見つからなくなります。
-
-```console
-$ specforge verify --strict examples/parallel-order-retry-fixed.md
-verified ok
-
-31 states generated, 16 distinct states found, 0 states left on queue.
-```
-
-ここで確認したのは、仕様に書いた状態遷移が成功または失敗として終了することです。
-実際の決済APIが正しく呼ばれることや、`record_payment_failure`が期待どおりの副作用を起こすことは、このモデルの検査対象ではありません。
-
-この例では、それぞれの要素が異なる役割を持ちます。
-
-| 要素         | この例で得られるもの                                                         |
-| ------------ | ---------------------------------------------------------------------------- |
-| 振る舞い仕様 | 決済と在庫確保の状態、受け付けるイベント、終了条件を実装前に明示する         |
-| Mermaid      | 並行する二つの処理と、正常終了、再試行、失敗の経路を同じ図で確認する         |
-| specforge    | 定まった記法で書かれた図を解析し、TLA+とTLCの入力へ変換する                  |
-| TLC          | 有限化したモデルで可能な状態遷移を探索し、宣言した進行性を破る実行を探す     |
-| 検査結果     | 終了しない実行が存在するかを示し、未確定だった設計判断を検討できるようにする |
-
-振る舞い仕様を書くことで、実装の各所に分散する前の状態遷移を一つの図として検討できます。
-specforgeとTLCをつなぐことで、人が読み合わせで選ばなかったイベント順序も検査対象になります。
-問題が見つかった場合は、実装後の障害としてではなく、要求や設計の未決定事項として扱えます。
-現在の`specforge verify`はTLCの結果を要約して表示するため、詳細な状態列ではなく、違反した性質と探索した状態数を報告します。
-
-## Mermaidから検証モデルまで
-
-**有限状態機械**は、有限個の状態と、その間を移動する遷移で振る舞いを表すモデルです。
-specforgeの入力は、有限状態機械に状態変数、ガード、アクションを加えた**拡張状態機械**です。
-制御上の状態が同じでも、再試行回数や残高などの状態変数によって遷移の可否と遷移先を変えられます。
-人が読み書きするMarkdown仕様を中間表現へ変換し、モデルチェッカーが読める形式へ落とします。
-
-```mermaid
-%%{init: {"theme": "dark"}}%%
-flowchart LR
-    Human["人が仕様を書く"]
-    Spec["Markdown<br/>Mermaid + 定義表"]
-    IR["機械可読な中間表現<br/>状態、遷移、補助情報"]
-    TLA["TLA+"]
-    CSP["CSPm"]
-    TLC["TLC<br/>状態空間を探索"]
-    FDR["FDR4<br/>CSPmを検査"]
-
-    Human --> Spec
-    Spec --> IR
-    IR --> TLA --> TLC
-    IR --> CSP --> FDR
-```
-
-遷移ラベルは`event [guard] / action`という順序で書きます。
-次の例では、`submit(item_count)`を受け取り、`has_items`が成立した場合に`accept_submission`を行って審査中へ移ります。
-
-```mermaid
-stateDiagram-v2
-%%{init: {"theme": "dark"}}%%
-    state "提出前" as Draft
-    state "審査中" as Reviewing
-    state "承認" as Approved
-    state "却下" as Rejected
-    state "取消" as Cancelled
-
-    [*] --> Draft
-    Draft --> Reviewing : submit(item_count) [has_items] / accept_submission
-    Draft --> Rejected : submit(item_count) [has_no_items] / reject_submission
-    Draft --> Cancelled : cancel / cancel_request
-    Reviewing --> Approved : review_passed / approve_request
-    Reviewing --> Rejected : review_failed / reject_request
-    Approved --> [*]
-    Rejected --> [*]
-    Cancelled --> [*]
-```
-
-### ガード定義
-
-| ガード名       | 条件              |
-| -------------- | ----------------- |
-| `has_items`    | `item_count > 0`  |
-| `has_no_items` | `item_count == 0` |
-
-### 共有状態
-
-| 変数         | 型           | 初期値 |
-| ------------ | ------------ | ------ |
-| `item_count` | int（0以上） | 0      |
-
-ペイロードは、イベントと一緒に状態機械へ渡す値です。
-この例では、`submit`イベントが申請項目数を`item_count`として渡します。
-
-### イベント一覧
-
-| イベント        | ペイロード     |
-| --------------- | -------------- |
-| `submit`        | `{item_count}` |
-| `cancel`        | なし           |
-| `review_passed` | なし           |
-| `review_failed` | なし           |
-
-**進行性**は、処理が止まらず、期待する状態へいずれ進むという性質です。
-
-### 進行性
-
-| 性質の名前    | TLA+式         |
-| ------------- | -------------- |
-| `Termination` | `<>Terminated` |
-
-`<>Terminated`は「いつか処理の完了を表す終端状態へ到達する」というTLA+の式です。
-
-Mermaidブロックの後ろには、ガード定義、共有状態、イベントペイロード、進行性などの表を置けます。
-specforgeは図と表を合わせて読み込み、構文検査、静的検査、TLA+またはCSPmへの変換を行います。平坦な状態機械はQuintにも変換できます。
-
-specforgeは通常の検証にTLA+とTLCを使います。
-CSPmを検査する場合は、別途FDR4というモデル検査器を使います。
-
-### 定まった記法を抽象構文木へ変換する
-
-Mermaidを図として表示するだけなら、記述方法を一つに限定する必要はありません。
-一方、状態機械を別の検査器やコード生成器へ渡すには、同じ意味を同じ構文で記述し、機械が曖昧さなく読み取れる必要があります。
-
-specforgeはMermaidの全機能を受理せず、`event [guard] / action`形式の遷移ラベル、階層状態、直交領域などのサブセットに入力を限定します。
-構文解析器は、この規則で書かれた図を状態、遷移、イベント、ガード、アクションへ分解した**抽象構文木（Abstract
-Syntax Tree、AST）**へ変換します。
-抽象構文木は、入力文を文字列のまま扱わず、各要素の種類と関係をたどれるデータ構造です。
-構文解析器は、Markdownの表から状態変数、イベントペイロード、進行性も抽出します。
-
-`--json`を使うと、状態機械のAST、ガード名と条件の対応、状態変数、イベントペイロードをJSONとして取得できます。
-同じ中間表現からTLA+、CSPm、Quintを生成しているため、独自の静的検査、可視化、別形式への変換も追加しやすい構造です。
-
-## specforgeで検査できること
-
-specforgeは、構文解析後の静的検査と、TLCによる状態空間の探索を分けて実行します。
-**静的検査**は、状態空間を探索せず、図と補助表の構文や参照関係を調べる検査です。
-TLCは初期状態から到達可能な状態を探索し、宣言した性質に違反する実行が存在するかを調べます。
-現在の`specforge verify`は、TLCの出力から違反した性質と探索結果を抜き出して表示します。
-
-| 確認すること       | 検査内容                                                                                  |
-| ------------------ | ----------------------------------------------------------------------------------------- |
-| 入力の構文         | 対応していないMermaid記法、壊れた遷移ラベル、複合状態の初期遷移の不足を検出する           |
-| 名前と参照の整合性 | 未定義のガード、宣言されていない状態変数、似ているが一致しないペイロード名を検出する      |
-| 明らかな未到達状態 | 宣言した状態が、どの遷移の到達先にも現れない場合に警告する                                |
-| 出口のない状態     | 到達先として使われる状態に、次の遷移または終端への遷移がない場合に警告する                |
-| デッドロック       | 終端状態ではないのに、どの遷移も選べず停止する到達可能な状態をTLCで探索する               |
-| 終端状態への到達   | 処理が完了したことを表す終端状態へ、いずれ到達するという性質に違反する実行をTLCで探索する |
-| そのほかの進行性   | `### 進行性`表で宣言した「いずれ起きるべきこと」に違反する実行をTLCで探索する             |
-
-未到達状態の静的検査は、宣言だけされて遷移先に使われていない状態を見つけます。
-すべての状態に対する完全な到達可能性証明ではないため、状態空間上の性質はTLCの結果と合わせて判断します。
-
-終端への到達は自動的に仮定されません。
-仕様に終端遷移と「いつか終端へ到達する」という進行性を宣言した場合に、specforgeがTLA+の式を生成し、TLCが反例の有無を検査します。
-**反例**は、宣言した性質が成立しないことを示す具体的な状態遷移です。
-進行性を検査するときは、実行できる遷移がいつまでも無視され続ける動作を除くため、実行可能な状態が続けばいつか実行されるという弱公平性を仮定します。
-`verified ok`は、指定した有限の値域と弱公平性の下で、生成したモデルに宣言済みの性質の反例が見つからなかったことを表します。
-
-## ビルドして使う
-
-### 必要なもの
-
-ソースからのビルドには Bun を使います。ビルド済みの実行ファイルは単体で TLA+ や CSPm へ変換できます。
-`specforge verify`でTLCを実行する場合は、Javaと`tla2tools.jar`も必要です。
-
-### リポジトリから実行ファイルを作る
-
-リポジトリをクローンし、`bun run compile`を実行します。
+リポジトリをクローンし、そのディレクトリでコマンドを実行します。
 
 ```bash
 git clone https://github.com/daikichiba9511/specforge.git
 cd specforge
-bun run compile
 ```
 
-ビルドが成功すると、実行した環境向けの実行ファイルが`bin/specforge`に生成されます。
-Bun ランタイムは実行ファイルに組み込まれます。
+Nix を使っている場合は、`nix develop` を実行すると、Bun、Java、TLC がそろいます。
 
-```bash
-./bin/specforge examples/vending-machine.md
-```
+<details>
+<summary>Bun と Java を自分で用意する場合</summary>
 
-継続して使う場合は、`bin/specforge`を任意の`PATH`配下へコピーするか、`bin`ディレクトリを`PATH`へ追加してください。
-以降の例では、`specforge`として実行できる状態を前提にします。
-
-### TLCを使えるようにする
-
-Javaをインストールし、TLA+ Toolsの`tla2tools.jar`を配置します。
-macOSでHomebrewを使う場合は、次のように準備できます。
+specforge は Bun で動きます。図の構文や名前の参照は Bun だけで調べられます。モデル検査まで実行するには Java と、TLC を収録した `tla2tools.jar` も必要です。Bun と Homebrew を導入済みの macOS では、次のコマンドで用意できます。
 
 ```bash
 brew install openjdk
 mkdir -p ~/.local/share/specforge
-curl -L -o ~/.local/share/specforge/tla2tools.jar \
-  https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
+curl -fL https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar \
+  -o ~/.local/share/specforge/tla2tools.jar
 ```
 
-別の場所にjarを置く場合は、`SPECFORGE_TLA_JAR`でパスを指定できます。
+ほかの環境では `JAVA_HOME` に JDK のディレクトリを指定します。JAR を別の場所に置いた場合は、そのファイルのパスを `SPECFORGE_TLA_JAR` に設定してください。
+
+</details>
+
+まず、決済を何度でも再試行できる仕様を検査します。
 
 ```bash
-export SPECFORGE_TLA_JAR=/path/to/tla2tools.jar
+bun run verify --strict examples/parallel-order-retry.md
 ```
 
-Nixを使う場合は、`nix develop`でBun、OpenJDK、`tla2tools.jar`、必要な環境変数が揃ったシェルへ入れます。
+このコマンドは `Error: Temporal properties were violated.` と表示して終了コード 1 を返します。「決済中」と「再試行待ち」を往復し続ける経路が、「注文処理はいつか終了する」という条件に反するためです。この仕様は、図の構文や名前の参照を調べる静的検査には通ります。[再試行に上限のない仕様](./examples/parallel-order-retry.md)
 
-## 振る舞い仕様を変換して検証する
-
-### 構文と中間表現を確認する
-
-`--json`は、構文解析した状態機械とMarkdownから抽出した補助情報をJSONで出力します。
-`--strict`を付けると、未定義のガード、未到達状態、出口のない状態などの静的検査の指摘を警告で終わらせず、終了コード1の失敗として扱います。
+次に、再試行を一回に限った仕様を同じ条件で検査します。二回目もタイムアウトしたら、そこで決済を打ち切ります。在庫確保が終われば、注文処理は失敗を返して終了します。
 
 ```bash
-specforge --json --strict path/to/spec.md
+bun run verify --strict examples/parallel-order-retry-fixed.md
 ```
 
-仕様を作成した直後は、まずこのコマンドで構文と静的な不整合を確認してください。
+今度は `verified ok` と表示されます。TLC はこのモデルで到達できる 16 の状態をすべて調べました。決済に失敗した場合も含め、処理が終わらない経路は見つかりませんでした。[再試行を一回に限った仕様](./examples/parallel-order-retry-fixed.md)
 
-### TLA+を生成する
+## 自分の仕様を書く
 
-`--tla`を付けると、TLA+モジュールを標準出力へ生成します。
+どんな出来事で状態が変わり、処理がどう終わるかを記述したものが**振る舞い仕様**です。まずは、注文処理のうち「決済は成功か失敗のどちらかで終わる」ことだけを確かめてみましょう。次の Markdown を `payment.md` として保存します。
+
+````markdown
+```mermaid
+stateDiagram-v2
+    [*] --> Paying
+    Paying --> Paid : approved
+    Paying --> Retrying : timed_out
+    Retrying --> Paid : approved
+    Retrying --> Failed : timed_out
+    Paid --> [*]
+    Failed --> [*]
+```
+
+### 進行性
+
+| 性質の名前  | TLA+式       |
+| ----------- | ------------ |
+| Termination | <>Terminated |
+````
+
+矢印の右にある `approved` や `timed_out` は、状態が変わるきっかけです。`Paid --> [*]` と `Failed --> [*]` は処理の終了を表します。表の `<>Terminated` は、状態とその変化を記述する言語 TLA+ で「いずれ終了状態に到達する」という意味です。このように、期待することがいつか起きる性質を**進行性**と呼びます。
 
 ```bash
-specforge --tla --bound=3 path/to/spec.md > Spec.tla
+bun run verify --strict payment.md
 ```
 
-`--bound=N`は、状態変数を有限化する`Domain == 0..N`の上限です。
-ガードの境界値へ到達できる最小値から始め、検証したい範囲に合わせて広げます。
+条件によって行き先が変わるときは、矢印に `event [guard] / action` と書けます。`guard` は遷移を許す条件、`action` はそのときに行う処理です。たとえば自販機の仕様では、商品を選んだときに残高が足りている場合だけ、払い出しに進みます。[自販機の仕様](./examples/vending-machine.md) · [振る舞い仕様の書き方](./docs/writing-specs.md)
+
+### 検査結果の読み方
+
+| 確かめたいこと                   | 使うコマンド                             | 結果の見方                                                                     |
+| -------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
+| 状態図と表の記述が整合しているか | `bun run cli --json --strict payment.md` | 未定義のガードや、どの矢印の行き先にもなっていない状態などを指摘します。       |
+| 処理が途中で行き詰まらないか     | `bun run verify --strict payment.md`     | 終了前にどの遷移も選べなくなる状態（デッドロック）があるかを調べます。         |
+| 処理がいつか終了するか           | 同じ `verify` コマンド                   | 「進行性」の表で終了条件を宣言すると、動き続けても終了しない経路まで調べます。 |
+
+`--strict` を付けると、静的検査で指摘が一つでもあれば終了コード 1 が返ります。モデル検査で違反が見つかった場合は、TLC の出力からエラーと探索結果を抜き出して表示します。
+
+`verified ok` が示すのは、図と表から作ったモデルでの結果です。残高や件数を使う仕様では、たとえば `--bound=3` と指定すると、検査する値の範囲は 0 から 3 になります。進行性の検査では、処理を進められる状態が続けば、いずれかの遷移がいつか実行されると仮定します。[検査の前提と公平性](./docs/concepts.md)
+
+## 既存のコードから始める
+
+すでに動くコードがある場合は、このリポジトリを Codex で開き、同梱の `spec-behavior` スキルに仕様の抽出を依頼できます。入口となる関数やコマンドを指定すると、Codex がソースとテストを読み、現在の振る舞いとその根拠を Markdown にまとめます。
+
+```text
+$spec-behavior src/verify.ts の verify から振る舞い仕様を書き出して。
+どんなときに TLC を起動するのか、起動に失敗したときは呼び出し元にどう伝わるのかを知りたい。
+実際の呼び出し順と結果も、書き出した仕様と照合して。
+```
+
+実際に `verify` の仕様を起こすと、二種類の失敗が見えてきます。TLC が異常終了したときは、`verify` が失敗を表す値を返します。Java プロセスの起動時に例外が発生したときは、その例外が呼び出し元に伝わります。
+
+照合テストでは、ファイル操作やプロセス起動をテスト用の関数に置き換えて `verify` を呼びます。この二種類の失敗を含む 10 通りのケースで、呼び出しの順序と結果が仕様に合うことを確かめています。[抽出した仕様](./docs/verify-execution.md) · [実装との照合テスト](./tests/verify-execution.test.ts)
+
+同じスキルで、新しい仕様の作成や、既存の仕様に対するレビューも依頼できます。[スキルの使い方](./.agents/skills/spec-behavior/SKILL.md)
+
+## ほかの形式で使う
+
+`verify` は状態図を TLA+ に変換して TLC に渡します。モデルを手元で読みたいときは `--tla` で書き出せます。並行する処理のイベント列を表す CSPm 形式で出力するには、形式を指定せずに実行します。CSPm の検査には別途 FDR4 を使います。
+
+```bash
+bun run cli --tla --bound=3 examples/vending-machine.md > Spec.tla
+bun run cli examples/vending-machine.md > Spec.csp
+```
 
 ### Quintでシナリオを実行する
 
-平坦な状態機械は `--quint` で書き出せます。リポジトリのルートから次を実行すると、自販機のモデルに対して
-「コイン投入 → 返金」と「コイン投入 → 商品選択 → 払い出し」の二つのシナリオをテストできます。
-Quint CLI はテストを実行するときに Bun が取得します。
+Quint では、操作を順に並べてモデルの動きをテストできます。次の例では、自販機の仕様を Quint のモデルに変換し、「コインを入れて返金を求める」「コインを入れ、商品を選んで受け取る」という二つのシナリオを試します。
 
 ```bash
-specforge --quint --strict --bound=3 examples/vending-machine.md > examples/quint/Spec.qnt
-bunx --bun --package @informalsystems/quint@0.34.0 quint test examples/quint/vending-tests.qnt --backend=typescript --max-samples=20 --seed=0x42
+bun run cli --quint --strict --bound=3 examples/vending-machine.md > examples/quint/Spec.qnt
+bunx --bun --package @informalsystems/quint@0.34.0 quint test examples/quint/vending-tests.qnt \
+  --backend=typescript --max-samples=20 --seed=0x42
 ```
 
-仕様から想定外の実行列を探すには、常に満たしてほしい条件を指定します。
+「投入待ちに戻ったら残高は必ずゼロか」も試せます。次のコマンドはモデル上で操作を繰り返し、この条件に反する状態を探します。
 
 ```bash
 bunx --bun --package @informalsystems/quint@0.34.0 quint run examples/quint/Spec.qnt \
@@ -377,173 +144,27 @@ bunx --bun --package @informalsystems/quint@0.34.0 quint run examples/quint/Spec
   --seed=0x42 --max-samples=100 --max-steps=6 --out-itf=refund.itf.json
 ```
 
-この例は反例を見つけて終了コード 1 を返し、状態列を `refund.itf.json` に保存します。
-返金イベントは状態を `Idle` に戻しますが、アクション名 `return_all` に残高の更新式は含まれていないためです。
-`quint run` は指定した範囲で実行列をサンプリングします。複合状態や進行性を含む仕様のモデル検査には次の `verify` を使います。
+この例では反例が見つかり、操作に伴う状態の変化が `refund.itf.json` に保存されます。返金の矢印をたどると投入待ちに戻りますが、矢印に書いたアクション名 `return_all` だけでは、モデルの残高はゼロに戻りません。このコマンドでは 1 回につき最大 6 ステップ、最大 100 回まで試し、反例が見つかった時点で止まります。状態の入れ子、並列処理、進行性を含む仕様には `verify` を使います。
 
-### TLCまで実行する
+## 単体の実行ファイルを作る
 
-`verify`は、Markdown仕様の読み込み、TLA+生成、TLCによるモデル検査を一続きに実行します。
+`bun run compile` で、その環境向けの実行ファイル `bin/specforge` を作れます。Bun も組み込まれるので、実行ファイルをパスの通った場所に置けば `specforge verify --strict payment.md` のように使えます。TLC を使う環境には Java と JAR も用意してください。
 
-```bash
-specforge verify --strict --bound=3 path/to/spec.md
-```
+## specforge 本体を開発する
 
-成功時は`verified ok`とTLCの探索結果を表示します。
-進行性を宣言した仕様では、デッドロック検査と合わせて、期待する状態へいずれ進むかも検査します。
-
-```text
-verified ok
-
-Model checking completed. No error has been found.
-```
-
-### CSPmを生成する
-
-出力形式を指定しない場合はCSPmを標準出力へ生成します。
+リポジトリのルートで次のコマンドを実行します。`mise install` を使うと、開発用の Bun と OpenJDK 21 をそろえられます。
 
 ```bash
-specforge path/to/spec.md > Spec.csp
+bun install --frozen-lockfile
+bun run test
+bun run fmt:check
+bun run lint
+bun run check
 ```
 
-FDR4による検証は現在のCLIから自動実行しません。
+## さらに詳しく
 
-## Codexのspec-behavior skillと使う
-
-このリポジトリには、仕様の作成、既存実装からの抽出、レビューに使えるskillを同梱しています。
-Codexでこのリポジトリを開くと、[`.agents/skills/spec-behavior`](./.agents/skills/spec-behavior)が検出されます。
-
-- **作成（write）モード**：対象の境界を決め、正常系と異常系を含む新しい振る舞い仕様を作る。
-- **抽出（extract）モード**：Codexが対象のソースを読み、現在の振る舞いとその根拠をMarkdownに書き出す。
-- **レビュー（review）モード**：既存仕様の構文、状態遷移、未定義イベント、ガード、設計メモを検査する。
-
-新しい仕様を作る場合は、保存先と検証まで行うことをプロンプトに含めます。
-
-```text
-$spec-behavior 作成モードで注文ワークフローの振る舞い仕様を
-specs/order-workflow.mdに作成し、specforgeの--strictを使った静的検査とTLC検証まで実行して
-```
-
-既存実装を調べる場合は、入口となる関数やコマンドと、何を確かめたいかを指定します。
-
-```text
-$spec-behavior 抽出モードで src/verify.ts の verify から振る舞い仕様を書き出して。
-TLC がどの条件で起動するか、起動できなければ呼び出し元に何が返るかを、
-実装の根拠と一緒に specs/verify.md にまとめて。実際の呼び出し順も仕様と照合して。
-```
-
-この例では、モデル検査で図のデッドロックを調べます。照合テストでは `verify` を呼び出し、入力エラーの後にツールを探さないことや、二つのファイルの書き込みに成功して初めて TLC を起動することを確かめます。[抽出した仕様と再現手順](./docs/verify-execution.md)
-
-既存仕様を確認する場合は、レビューモードを明示します。
-
-```text
-$spec-behavior レビューモードでexamples/order-workflow.mdをレビューし、
-specforge --json --strictとTLC検証の結果を報告して
-```
-
-skillは仕様を作成する規律を提供し、specforgeはその仕様を機械的に変換して検査します。
-両者の役割は次のように分かれます。
-
-```mermaid
-%%{init: {"theme": "dark"}}%%
-flowchart TB
-    Request["対象となる振る舞い"]
-    Authoring["spec-behavior skill<br/>境界、状態、異常系、設計メモを整理"]
-    Document["specforge互換のMarkdown仕様"]
-    Validation["specforge<br/>構文解析 + 静的検査"]
-    Model["TLA+モデル"]
-    Check["TLC<br/>デッドロックと進行性を検査"]
-
-    Request --> Authoring --> Document --> Validation --> Model --> Check
-```
-
-skillが参照する詳しい執筆規則は[振る舞い仕様の書き方](./docs/writing-specs.md)にあります。
-構文解析器とコード生成器が受理する厳密な入力契約は[specforge入力仕様](./docs/spec.md)が正準です。
-
-## specforge自体を開発する
-
-ここまでの節は、ビルド済みのspecforgeを利用する人を対象としています。
-この節は、構文解析、静的検査、コード生成、CLIを変更する開発者向けです。
-
-### 開発環境
-
-再現性のある開発環境にはNix flakeを使えます。
-
-```bash
-nix develop
-```
-
-Bun、OpenJDK 21、`tla2tools.jar`が揃い、`SPECFORGE_TLA_JAR`と`JAVA_HOME`も設定されます。
-
-開発ツールのバージョンを管理するmiseを使う場合は、BunとOpenJDK
-21を`mise.toml`の定義に従って導入します。
-TLCを使う場合は、前述の手順で`tla2tools.jar`を別途配置してください。
-
-```bash
-mise install
-```
-
-手動で開発環境を構築する場合は、`package.json` の `packageManager` に指定したバージョンの Bun と OpenJDK 21 をインストールしてください。
-
-### 開発用コマンド
-
-```bash
-bun install --frozen-lockfile  # ロックファイルに従って開発ツールを導入
-bun run test       # テスト
-bun run fmt        # フォーマット
-bun run lint       # lint
-bun run check      # 型検査
-
-bun run cli --json --strict examples/vending-machine.md
-bun run cli --tla --bound=3 examples/vending-machine.md
-bun run verify --strict --bound=3 examples/vending-machine.md
-
-bun run compile    # bin/specforgeを生成
-bun run bench      # ベンチマーク
-```
-
-複数モジュールにまたがる変更へ着手する前に、[AGENTS.md](./AGENTS.md)で現在の設計文脈、正準ドキュメント、残タスクを確認してください。
-具体的な残タスクは[tasks/todo.md](./tasks/todo.md)で管理しています。
-
-## 現在の対応範囲
-
-構文解析器は、spec-behavior skillが生成するMermaidサブセットだけを受理します。
-サブセット外のMermaid記法は曖昧に解釈せず、構文解析時に拒絶します。
-
-現在は次の要素に対応しています。
-
-- 状態を入れ子にする複合状態と、内部の処理が終わるとイベントなしで進む完了遷移
-- 直交領域
-- `event [guard] / action`形式の遷移ラベル
-- イベントが渡した値を同名の状態変数へ引き継ぐ変換
-- ガード名を定義表の条件式へ置き換える変換
-- 構文、名前の参照、未到達状態、出口のない状態などの静的検査
-- `### 進行性`表からTLA+の時間的な性質への変換
-- 進行性の検査に必要な弱公平性の付加
-- `specforge verify`からのTLC実行
-
-specforgeが検査する対象は、Mermaidと補助表で定義した拡張状態機械モデルです。
-モデルに含めていない性質は検査対象になりません。
-現在の変換セマンティクスと既知の境界は[specforge入力仕様](./docs/spec.md)を参照してください。
-
-## ドキュメント
-
-- [振る舞い仕様とは何か](./docs/behavior-specs.md)：振る舞い仕様の対象、境界、完全性、形式検証との関係
-- [振る舞い仕様の書き方](./docs/writing-specs.md)：状態、イベント、ガード、アクション、補助表、設計メモの書き方
-- [基本概念](./docs/concepts.md)：拡張状態機械、TLA+、CSPm、デッドロック、進行性、公平性の解説
-- [specforge入力仕様](./docs/spec.md)：Mermaidサブセット、文法、補助情報、変換セマンティクス
-- [遷移ラベルの読み方](./docs/label-reading.md)：`event [guard] / action`の解釈
-- [specforge自身の振る舞い仕様](./docs/behavior.md)：自己適用としてTLC検証している仕様
-- [サンプル集](./examples/README.md)：正常例と反例を含む実行可能な例
-- [性能計測](./docs/perf.md)：ベンチマークとCPUプロファイルの取得方法
-- [設計判断](./docs/decisions.md)：採用済みの判断と未決事項
-- [残タスク](./tasks/todo.md)：優先度と規模を付けたバックログ
-
-## 技術構成
-
-- Bun
-- TypeScript
-- 通常の形式検証にはTLA+とTLCを使用
-- CSPm形式の生成にも対応し、検査にはFDR4を使用
-- 構文解析器とコード生成器の中核は外部依存なし
-- テストは `bun:test` と `node:assert/strict` を使用
+- [サンプル集](./examples/README.md)には、注文処理のほか、接続プールや並行処理の例があります。
+- [振る舞い仕様の考え方](./docs/behavior-specs.md)と[基本概念](./docs/concepts.md)では、仕様に含める範囲の決め方と、モデル検査で確かめられる性質を説明しています。
+- [入力仕様](./docs/spec.md)と[遷移ラベルの読み方](./docs/label-reading.md)では、使える Mermaid 記法、表の書式、各形式への変換規則を確認できます。
+- specforge 本体については、[CLI の振る舞い仕様](./docs/behavior.md)、[設計判断](./docs/decisions.md)、[性能計測](./docs/perf.md)、[残タスク](./tasks/todo.md)を参照してください。
