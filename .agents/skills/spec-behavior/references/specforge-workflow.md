@@ -4,13 +4,13 @@ specforge と組み合わせて振る舞い仕様を作成し、レビューす�
 
 ## 正準文書
 
-役割の異なる文書を混同しない。
+次の文書は specforge 本体のリポジトリにある。別のプロジェクトでスキルを使う場合は、リンク先を参照する。
 
-| 文書                     | 役割                                         |
-| ------------------------ | -------------------------------------------- |
-| `docs/behavior-specs.md` | 振る舞い仕様の考え方と適用範囲               |
-| `docs/writing-specs.md`  | 人が specforge 互換仕様を書く手順            |
-| `docs/spec.md`           | parser と codegen が受理する機械的な入力契約 |
+| 文書                                                                                                   | 役割                                         |
+| ------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| [docs/behavior-specs.md](https://github.com/daikichiba9511/specforge/blob/main/docs/behavior-specs.md) | 振る舞い仕様の考え方と適用範囲               |
+| [docs/writing-specs.md](https://github.com/daikichiba9511/specforge/blob/main/docs/writing-specs.md)   | 人が specforge 互換仕様を書く手順            |
+| [docs/spec.md](https://github.com/daikichiba9511/specforge/blob/main/docs/spec.md)                     | parser と codegen が受理する機械的な入力契約 |
 
 構文や変換結果について判断するときは `docs/spec.md` を優先する。
 仕様の分け方や不足ケースについて判断するときは `docs/behavior-specs.md` と
@@ -35,13 +35,13 @@ specforge に渡す仕様は Markdown の `.md` を基本とする。 生の `.m
 
 ## 静的検査とモデル検査
 
-リポジトリ内で作業している場合は、保存後に次を実行する。
+specforge 本体のリポジトリで作業している場合は、保存後に次を実行する。
 
 ```bash
 bun run cli --json --strict path/to/spec.md
 ```
 
-インストール済みバイナリを使う場合は次を実行する。
+別のプロジェクトでは、そのプロジェクトのディレクトリから、パスの通った `specforge` を実行する。
 
 ```bash
 specforge --json --strict path/to/spec.md
@@ -51,13 +51,13 @@ specforge --json --strict path/to/spec.md
 失敗した場合は指摘IDと対象行を確認し、仕様の意図を保ったまま修正する。
 
 構文解析と静的検査が通っても、到達可能な状態の性質はまだ検証されていない。
-TLCが利用できる環境では次を実行する。
+TLC が利用できる環境では、specforge 本体のリポジトリで次を実行する。
 
 ```bash
 bun run verify --strict --bound=3 path/to/spec.md
 ```
 
-バイナリの場合は次を実行する。
+別のプロジェクトでは次を実行する。
 
 ```bash
 specforge verify --strict --bound=3 path/to/spec.md
