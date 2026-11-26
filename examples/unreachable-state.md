@@ -64,7 +64,7 @@ stateDiagram-v2
 
 ```bash
 $ bun run cli examples/unreachable-state.md
-warn V004: state 'Orphan' is declared but unreachable (no transition has it as 'to')
+warn V004: state 'Orphan' is unreachable from initial state 'Started'
   hint: Add a transition '<from> --> Orphan' from a reachable state, or remove the declaration if intentional.
 
 [CSPm 出力が stdout に]

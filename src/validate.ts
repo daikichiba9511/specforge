@@ -1,6 +1,7 @@
 import { isPseudoState } from "./types.ts";
 import type { Diagram, Region, Stmt } from "./types.ts";
 import type { SpecDoc } from "./spec_doc.ts";
+import { topLevelFlow } from "./transitions.ts";
 
 type Transition = Extract<Stmt, { kind: "transition" }>;
 type Composite = Extract<Stmt, { kind: "composite" }>;
@@ -124,6 +125,22 @@ function regionHasEntry(region: Region): boolean {
     return false;
 }
 
+/** 初期状態から矢印をたどる。終端の `[*]` から初期遷移に戻る経路は作らない。 */
+function reachableFrom(initial: string, transitions: Transition[]): Set<string> {
+    const outgoing = new Map<string, string[]>();
+    for (const { from, to } of transitions) {
+        if (isPseudoState(from) || isPseudoState(to)) continue;
+        const edges = outgoing.get(from);
+        if (edges) edges.push(to);
+        else outgoing.set(from, [to]);
+    }
+    const reached = new Set([initial]);
+    for (const state of reached) {
+        for (const next of outgoing.get(state) ?? []) reached.add(next);
+    }
+    return reached;
+}
+
 /**
  * Parse 後の {@link Diagram} と前処理済みの {@link SpecDoc} に対して意味検証を走らせる。
  *
@@ -132,7 +149,7 @@ function regionHasEntry(region: Region): boolean {
  * - **V002**: ガード式が state var にも event payload field にも無い識別子を参照している
  * - **V003**: composite の region に `[*] --> <entry>` の初期遷移が無い (region 入口が SKIP に
  *   フォールバックして TLA+ / CSPm の意味がおかしくなる)
- * - **V004**: state が宣言されているが、 どの transition の `to` にも現れない (= 未到達)
+ * - **V004**: 平坦な図では初期状態からの経路がない。複合状態などでは遷移先への出現を調べる。
  * - **V005**: state は到達可能だが、 どの transition の `from` にも現れない (= 出口なし、 stuck
  *   する可能性)。 V004 と排他: 未到達状態は V004 のみ、 到達可能 + 出口なしは V005 のみ
  * - **V006**: event payload field の名前が state var と「似ているが一致しない」 (1 文字違い or
@@ -207,22 +224,22 @@ export function validate(diagram: Diagram, doc: SpecDoc): ValidationReport {
         }
     }
 
-    // V004: 未到達 state — 宣言されているが誰の to にもならない
-    // V005: 出口なし state — 到達可能だが誰の from にもならない (stuck パターン)
-    const reachable = new Set<string>();
-    const hasOutbound = new Set<string>();
-    for (const t of transitions) {
-        if (!isPseudoState(t.to)) reachable.add(t.to);
-        if (!isPseudoState(t.from)) hasOutbound.add(t.from);
-    }
+    const initial = diagram.regions.length === 1 && composites.length === 0
+        ? topLevelFlow(diagram).initialState
+        : null;
+    const reachable = initial !== null
+        ? reachableFrom(initial, transitions)
+        : new Set(transitions.map((t) => t.to));
+    const hasOutbound = new Set(transitions.map((t) => t.from));
     const declared = collectDeclaredStates(diagram);
     for (const name of declared) {
         if (!reachable.has(name)) {
             issues.push({
                 level: "warning",
                 code: "V004",
-                message:
-                    `state '${name}' is declared but unreachable (no transition has it as 'to')`,
+                message: initial !== null
+                    ? `state '${name}' is unreachable from initial state '${initial}'`
+                    : `state '${name}' is declared but unreachable (no transition has it as 'to')`,
                 suggestion: `Add a transition '<from> --> ${name}' from a reachable state, ` +
                     `or remove the declaration if intentional.`,
             });
