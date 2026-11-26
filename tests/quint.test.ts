@@ -2,8 +2,10 @@ import { expect, test } from "bun:test";
 import { main } from "../src/cli.ts";
 
 const vending = await Bun.file(new URL("../examples/vending-machine.md", import.meta.url)).text();
-const exportModel = (source: string, ...options: string[]) =>
-    main(["--quint", ...options, "spec.md"], { readFile: () => source });
+/** 文字列を仕様ファイルの代わりに渡し、実際の CLI の `--quint` 経路を通した結果を返す。 */
+function exportModel(source: string, ...options: string[]) {
+    return main(["--quint", ...options, "spec.md"], { readFile: () => source });
+}
 
 test("export the vending model with bounded payloads, unchanged balance on refund, and terminal stuttering", () => {
     const result = exportModel(vending, "--strict", "--bound=3");

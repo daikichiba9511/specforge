@@ -15,10 +15,12 @@ type Channels = {
     untyped: string[];
 };
 
-const collectAll = (regions: Region[]): Collected => {
+/** 入れ子の領域も含めて遷移を列挙し、複合状態を ID から引けるようにする。 */
+function collectAll(regions: Region[]): Collected {
     const transitions: Transition[] = [];
     const composites = new Map<string, Composite>();
-    const walk = (rs: Region[]): void => {
+    /** 複合状態の本体を深さ優先でたどり、遷移と複合状態を外側の収集結果に追加する。 */
+    function walk(rs: Region[]): void {
         for (const region of rs) {
             for (const stmt of region.stmts) {
                 switch (stmt.kind) {
@@ -36,12 +38,13 @@ const collectAll = (regions: Region[]): Collected => {
                 }
             }
         }
-    };
+    }
     walk(regions);
     return { transitions, composites };
-};
+}
 
-const groupByFrom = (transitions: Transition[]): Map<string, Transition[]> => {
+/** 同じ状態から出る遷移を、仕様に現れる順序でまとめる。 */
+function groupByFrom(transitions: Transition[]): Map<string, Transition[]> {
     const result = new Map<string, Transition[]>();
     for (const t of transitions) {
         const arr = result.get(t.from);
@@ -49,21 +52,23 @@ const groupByFrom = (transitions: Transition[]): Map<string, Transition[]> => {
         else result.set(t.from, [t]);
     }
     return result;
-};
+}
 
-// `name(arg1, arg2)` 等から先頭の識別子部分のみ取り出す。channel 宣言用。
-const bareIdent = (s: string): string => {
+/** アクションのチャネル宣言に使う先頭の識別子を取り出す。識別子で始まらなければ元の文字列を返す。 */
+function bareIdent(s: string): string {
     const m = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(s);
     return m ? m[1] : s;
-};
+}
 
-const collectChannels = (
+/** ペイロードを持つイベントを型付きチャネルに分ける。イベントと同名のアクションは二重に宣言しない。 */
+function collectChannels(
     diagram: Diagram,
     eventPayloads: Map<string, string[]>,
-): Channels => {
+): Channels {
     const events = new Set<string>();
     const actions = new Set<string>();
-    const walk = (rs: Region[]): void => {
+    /** 入れ子の遷移もたどり、イベント名とアクションの先頭識別子を別々の集合に集める。 */
+    function walk(rs: Region[]): void {
         for (const region of rs) {
             for (const stmt of region.stmts) {
                 if (stmt.kind === "transition") {
@@ -74,7 +79,7 @@ const collectChannels = (
                 }
             }
         }
-    };
+    }
     walk(diagram.regions);
 
     const typed: Array<{ name: string; fields: string[] }> = [];
@@ -89,9 +94,10 @@ const collectChannels = (
         if (!events.has(a)) untyped.push(a);
     }
     return { typed, untyped };
-};
+}
 
-const formatChannelDecls = (channels: Channels, bound: number): string => {
+/** CSPm のチャネル宣言を生成する。型付きチャネルがある場合だけ、その値域 `VAL` を `0..bound` として宣言する。 */
+function formatChannelDecls(channels: Channels, bound: number): string {
     if (channels.typed.length === 0 && channels.untyped.length === 0) return "";
     const lines = ["-- specforge: event / action channels"];
     if (channels.typed.length > 0) lines.push(`nametype VAL = {0..${bound}}`);
@@ -101,38 +107,35 @@ const formatChannelDecls = (channels: Channels, bound: number): string => {
         lines.push(`channel ${t.name} : ${type}  -- payload: [${t.fields.join(", ")}]`);
     }
     return lines.join("\n") + "\n\n";
-};
+}
 
-// プロセス名を `Name(v1, v2, ...)` の invocation 形にする。
-// stateVars が空、または name が `SKIP` の場合は素の name を返す。
-const invokeProcess = (name: string, stateVars: string[]): string => {
+/** 状態変数をプロセスの実引数にする。状態変数がない場合と `SKIP` には引数を付けない。 */
+function invokeProcess(name: string, stateVars: string[]): string {
     if (name === "SKIP" || stateVars.length === 0) return name;
     return `${name}(${stateVars.join(", ")})`;
-};
+}
 
-// ガードタグを辞書で式に置換。辞書に無いタグは verbatim を返す。
-const resolveGuard = (raw: string, guards: Map<string, string>): string => guards.get(raw) ?? raw;
+/** ガード名に対応する式を返す。辞書にない場合は入力をそのまま CSPm の式として使う。 */
+function resolveGuard(raw: string, guards: Map<string, string>): string {
+    return guards.get(raw) ?? raw;
+}
 
-// `["a", "b"]` + to="X" → "a -> b -> X"。空配列なら to のみ。
-const formatActionsToTarget = (actions: string[], to: string): string =>
-    actions.length > 0 ? `${actions.join(" -> ")} -> ${to}` : to;
+/** 遷移先の手前にアクションを入力順に `->` でつなぐ。アクションがなければ遷移先だけを返す。 */
+function formatActionsToTarget(actions: string[], to: string): string {
+    return actions.length > 0 ? `${actions.join(" -> ")} -> ${to}` : to;
+}
 
-// 1 つの遷移を CSPm の 1 ブランチに整える。
-//
-// セマンティクス:
-// - 通常イベント (payload 無し) + guard: `(guard) & event -> ...` (pre-event guard)
-// - payload event + guard: `event?p.q -> (guard) & ...` (binding が guard より前)
-// - event 無し: prefix を省略 (`tau` は出さない)
-// - 遷移先プロセスは {@link invokeProcess} で `Next(v1, v2, ...)` 形に。
-//   payload field 名が state var 名と一致する場合は `?` で bind されてシャドウィングが起こり、
-//   そのまま `Next(...)` に渡すと自動的に新値が thread される。
-const formatBranch = (
+/**
+ * 遷移を CSPm の選択肢に変換する。ペイロードがある場合はイベントで値を束縛してからガードを評価し、値を遷移先に渡す。
+ * 通常のイベントではガードを先に評価する。イベントがなければ接頭辞を省略する。
+ */
+function formatBranch(
     t: Transition,
     guards: Map<string, string>,
     eventPayloads: Map<string, string[]>,
     stateVars: string[],
     indent: string,
-): string => {
+): string {
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
     const toInvocation = invokeProcess(to, stateVars);
     const guardWrapped = t.label.guard ? `(${resolveGuard(t.label.guard, guards)}) & ` : "";
@@ -150,53 +153,51 @@ const formatBranch = (
     }
 
     return `${indent}${guardWrapped}${event} -> ${targetChain}`;
-};
+}
 
-const formatLeafProcess = (
+/** 同じ状態から出る各遷移を外部選択 `[]` で結び、葉状態のプロセス定義を組み立てる。 */
+function formatLeafProcess(
     from: string,
     transitions: Transition[],
     guards: Map<string, string>,
     eventPayloads: Map<string, string[]>,
     stateVars: string[],
-): string => {
+): string {
     const lhs = invokeProcess(from, stateVars);
     const branches = transitions
         .map((t) => formatBranch(t, guards, eventPayloads, stateVars, "  "))
         .join("\n  []\n");
     return `${lhs} =\n${branches}`;
-};
+}
 
-// `[*] --> X` inside a region marks X as the region entry. ill-formed input
-// (no entry transition) falls back to SKIP so codegen doesn't crash.
-const regionEntry = (region: Region): string => {
+/** 領域の `[*]` から出る最初の遷移の行き先を返す。入口がなければ `SKIP` を使う。 */
+function regionEntry(region: Region): string {
     for (const stmt of region.stmts) {
         if (stmt.kind === "transition" && isPseudoState(stmt.from)) return stmt.to;
     }
     return "SKIP";
-};
+}
 
-// Completion transition from a composite (event == null). The body SKIPs first,
-// then this branch runs in sequence after `;`.
-const formatCompletionBranch = (
+/** 複合状態の本体が終了した後に実行する、ガードとアクション付きの完了遷移を生成する。 */
+function formatCompletionBranch(
     t: Transition,
     guards: Map<string, string>,
     stateVars: string[],
-): string => {
+): string {
     const guard = t.label.guard ? `(${resolveGuard(t.label.guard, guards)}) & ` : "";
     const to = isPseudoState(t.to) ? "SKIP" : t.to;
     const toInvocation = invokeProcess(to, stateVars);
     return `${guard}${formatActionsToTarget(t.label.actions, toInvocation)}`;
-};
+}
 
-// Render a composite state as a CSPm process:
-//   Composite(v...) = body [; completion-choice] [/\\ triggered-choice]
-const formatComposite = (
+/** 直交領域を `|||` で並行合成する。完了遷移は本体の後に続け、イベントによる退出は割り込みとして組み込む。 */
+function formatComposite(
     c: Composite,
     outer: Transition[],
     guards: Map<string, string>,
     eventPayloads: Map<string, string[]>,
     stateVars: string[],
-): string => {
+): string {
     const entries = c.regions.map((region) => invokeProcess(regionEntry(region), stateVars));
     const orthogonal = entries.length > 1;
     const body = orthogonal ? entries.join(" ||| ") : (entries[0] ?? "SKIP");
@@ -223,23 +224,23 @@ const formatComposite = (
     }
 
     return `${invokeProcess(c.id, stateVars)} = ${core}`;
-};
+}
 
-// トップレベル `[*] --> Initial` 遷移を 1 つ拾う (見つからなければ null)。
-// region 内の `[*] -->` (= composite 内 entry) は対象外。
-const findInitialTransition = (diagram: Diagram): Transition | null => {
+/** 最上位の領域で `[*]` から出る最初の遷移を探す。複合状態の内部にある入口は対象外とする。 */
+function findInitialTransition(diagram: Diagram): Transition | null {
     for (const region of diagram.regions) {
         for (const stmt of region.stmts) {
             if (stmt.kind === "transition" && isPseudoState(stmt.from)) return stmt;
         }
     }
     return null;
-};
+}
 
-// `Spec = Initial(0, 0, ...)` の entry point を組み立てる。
-// state var が無い、もしくは `[*] -->` が見つからない場合は何も出さない。
-// 初期遷移の event は drop (外部トリガと見なす)、action chain は保持。
-const formatEntryPoint = (diagram: Diagram, stateVars: string[]): string => {
+/**
+ * 状態変数と初期遷移が揃っていれば、各変数を 0 にして `Spec` を開始する。
+ * 初期遷移のアクションは実行し、イベントは待たない。
+ */
+function formatEntryPoint(diagram: Diagram, stateVars: string[]): string {
     if (stateVars.length === 0) return "";
     const init = findInitialTransition(diagram);
     if (!init) return "";
@@ -253,7 +254,7 @@ const formatEntryPoint = (diagram: Diagram, stateVars: string[]): string => {
         "",
         "",
     ].join("\n");
-};
+}
 
 /**
  * {@link Diagram} から CSPm (FDR4 入力) 文字列を生成する。
@@ -284,13 +285,13 @@ const formatEntryPoint = (diagram: Diagram, stateVars: string[]): string => {
  *                        (デフォルト 1 = `{0, 1}`)。FDR4 の状態空間に直接影響する
  * @returns 各セクションを `\n\n` 区切りで連結した CSPm 文字列
  */
-export const generateCspm = (
+export function generateCspm(
     diagram: Diagram,
     guards: Map<string, string> = new Map(),
     stateVars: string[] = [],
     eventPayloads: Map<string, string[]> = new Map(),
     bound: number = 1,
-): string => {
+): string {
     const { transitions, composites } = collectAll(diagram.regions);
     const byFrom = groupByFrom(transitions);
 
@@ -313,4 +314,4 @@ export const generateCspm = (
         formatEntryPoint(diagram, stateVars) +
         processes.join("\n\n")
     );
-};
+}

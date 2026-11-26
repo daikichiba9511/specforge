@@ -34,12 +34,11 @@ const defaultDeps: Deps = {
     readFile: (path) => readFileSync(path, "utf-8"),
 };
 
-// SpecDoc + Diagram を 1 つの JSON-serializable な object に変換する。
-// Map は plain object に。
-const docAndDiagramToJson = (
+/** `--json` 用に構文木と補助情報をまとめる。ガードとイベントの辞書は JSON オブジェクトとして出力する。 */
+function docAndDiagramToJson(
     doc: ReturnType<typeof preprocess>,
     diagram: unknown,
-): string => {
+): string {
     return JSON.stringify(
         {
             diagram,
@@ -50,7 +49,7 @@ const docAndDiagramToJson = (
         null,
         2,
     );
-};
+}
 
 /**
  * specforge CLI のエントリポイント。
@@ -76,7 +75,7 @@ const docAndDiagramToJson = (
  * else console.error(r.stderr);
  * ```
  */
-export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
+export function main(args: string[], deps: Deps = defaultDeps): MainResult {
     const useQuint = args.includes("--quint");
     if (useQuint && (args[0] === "verify" || args.includes("--json") || args.includes("--tla"))) {
         return {
@@ -160,10 +159,13 @@ export const main = (args: string[], deps: Deps = defaultDeps): MainResult => {
         );
     }
     return { kind: "success", stdout, warnings };
-};
+}
 
-// `--bound=N` を args から拾って整数に変換。 値が壊れていたら Error を返す (caller が failure 化)。
-const parseBoundArg = (args: string[]): number | Error => {
+/**
+ * `--bound=N` の非負整数を読み取る。
+ * 省略時は 1、不正な値なら CLI がエラーを報告できるよう `Error` を返す。
+ */
+function parseBoundArg(args: string[]): number | Error {
     const arg = args.find((a) => a.startsWith("--bound="));
     if (!arg) return 1;
     const raw = arg.slice("--bound=".length);
@@ -172,10 +174,10 @@ const parseBoundArg = (args: string[]): number | Error => {
         return new Error(`--bound expects a non-negative integer, got '${raw}'`);
     }
     return n;
-};
+}
 
-// `verify` サブコマンドの実装。verify モジュールへの委譲 + 結果を MainResult に整形。
-const runVerify = (verifyArgs: string[], deps: Deps): MainResult => {
+/** 入力仕様を検査し、`--strict` で警告があれば検証を打ち切る。それ以外は TLC の検証結果に警告を添える。 */
+function runVerify(verifyArgs: string[], deps: Deps): MainResult {
     const strict = verifyArgs.includes("--strict");
     const bound = parseBoundArg(verifyArgs);
     if (bound instanceof Error) {
@@ -213,14 +215,15 @@ const runVerify = (verifyArgs: string[], deps: Deps): MainResult => {
     }
 
     return finalizeVerify(positional[0], strict, bound, warnings);
-};
+}
 
-const finalizeVerify = (
+/** 検証結果を CLI の出力に変換する。必要なツールが見つからない場合は終了コード 2、それ以外の失敗は 1 を返す。 */
+function finalizeVerify(
     specPath: string,
     _strict: boolean,
     bound: number,
     warnings: string[],
-): MainResult => {
+): MainResult {
     const result = verify(specPath, undefined, bound);
     switch (result.kind) {
         case "verified":
@@ -240,7 +243,7 @@ const finalizeVerify = (
         case "io_error":
             return { kind: "failure", exitCode: 1, stderr: result.message, warnings };
     }
-};
+}
 
 if (import.meta.main) {
     const r = main(argv.slice(2));

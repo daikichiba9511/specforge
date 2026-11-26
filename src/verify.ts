@@ -26,7 +26,8 @@ export type VerifyDeps = {
     findTlaJar: () => string | null;
 };
 
-const defaultFindJava = (): string | null => {
+/** `JAVA_HOME/bin/java`、Homebrew、`/usr/bin/java` の順に探し、見つかった最初のパスを返す。 */
+function defaultFindJava(): string | null {
     const home = env.JAVA_HOME;
     if (home) {
         const p = join(home, "bin", "java");
@@ -47,9 +48,13 @@ const defaultFindJava = (): string | null => {
         } catch { /* try next */ }
     }
     return null;
-};
+}
 
-const defaultFindTlaJar = (): string | null => {
+/**
+ * `SPECFORGE_TLA_JAR` があればその値を使う。
+ * 省略時はユーザーのデータディレクトリを探し、見つからなければ `null` を返す。
+ */
+function defaultFindTlaJar(): string | null {
     const e = env.SPECFORGE_TLA_JAR;
     if (e) return e;
     const home = env.HOME ?? "";
@@ -64,15 +69,16 @@ const defaultFindTlaJar = (): string | null => {
         } catch { /* try next */ }
     }
     return null;
-};
+}
 
-const defaultRunTlc = (
+/** 指定の作業ディレクトリで TLC を同期実行し、標準出力、標準エラー、終了コードを返す。プロセスの起動エラーは呼び出し側に伝える。 */
+function defaultRunTlc(
     javaPath: string,
     jarPath: string,
     specFile: string,
     cfgFile: string,
     cwd: string,
-): { stdout: string; stderr: string; code: number } => {
+): { stdout: string; stderr: string; code: number } {
     const result = spawnSync(javaPath, [
         "-XX:+UseParallelGC",
         "-cp",
@@ -90,7 +96,7 @@ const defaultRunTlc = (
         stderr: result.stderr,
         code: result.status ?? 1,
     };
-};
+}
 
 export const defaultVerifyDeps: VerifyDeps = {
     readFile: (path) => readFileSync(path, "utf-8"),
@@ -119,19 +125,17 @@ export type VerifyResult =
 
 const MODULE_NAME = "Spec";
 
-// .cfg は SPECIFICATION 行を必ず含む。 spec 中で `### Liveness` 表が宣言されていれば PROPERTY 行を
-// 追加して TLC に時相プロパティを検証させる。 names は TLA+ MODULE 内の `<name> == <formula>` 定義と
-// 対応する。
-const buildCfg = (propertyNames: readonly string[]): string => {
+/** TLC の設定に `SPECIFICATION Spec` を書き、時相プロパティがあれば対応する定義名を `PROPERTY` 行に並べる。 */
+function buildCfg(propertyNames: readonly string[]): string {
     const lines = ["SPECIFICATION Spec"];
     if (propertyNames.length > 0) {
         lines.push(`PROPERTY ${propertyNames.join(" ")}`);
     }
     return lines.join("\n") + "\n";
-};
+}
 
-const summarizeTlcOutput = (stdout: string): string => {
-    // TLC の長い出力から「状態数 / 完了 / エラー」行のみ抜き出す。
+/** CLI の検証結果に表示するため、TLC の出力から状態数、進行状況、検査の成否に関する行を抜き出す。 */
+function summarizeTlcOutput(stdout: string): string {
     const lines = stdout.split("\n");
     const keep: string[] = [];
     for (const line of lines) {
@@ -146,7 +150,7 @@ const summarizeTlcOutput = (stdout: string): string => {
         }
     }
     return keep.join("\n");
-};
+}
 
 /**
  * spec を TLA+ 化 → TLC で検証する。
@@ -155,11 +159,11 @@ const summarizeTlcOutput = (stdout: string): string => {
  * @param deps - 副作用注入 (省略時はデフォルト実装)
  * @param bound - generateTla の bound (Domain == 0..N) パラメータ。省略時 1
  */
-export const verify = (
+export function verify(
     specPath: string,
     deps: VerifyDeps = defaultVerifyDeps,
     bound: number = 1,
-): VerifyResult => {
+): VerifyResult {
     let raw: string;
     try {
         raw = deps.readFile(specPath);
@@ -237,4 +241,4 @@ export const verify = (
         stderr: result.stderr,
         code: result.code,
     };
-};
+}

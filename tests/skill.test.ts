@@ -10,10 +10,12 @@ const SKILL_REFERENCE_FILES = [
     "../.agents/skills/spec-behavior/references/multi-entity-composition.md",
 ] as const;
 
-const extractStateDiagrams = (markdown: string): string[] =>
-    [...markdown.matchAll(/```mermaid\s*\n([\s\S]*?)```/g)]
+/** 文書の Mermaid コードブロックのうち、`stateDiagram-v2` で始まる図だけを検査対象として抜き出す。 */
+function extractStateDiagrams(markdown: string): string[] {
+    return [...markdown.matchAll(/```mermaid\s*\n([\s\S]*?)```/g)]
         .map((match) => match[1].trim())
         .filter((block) => block.startsWith("stateDiagram-v2"));
+}
 
 test("repo-local spec-behavior examples stay parseable by specforge", async () => {
     let exampleCount = 0;

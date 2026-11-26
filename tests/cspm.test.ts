@@ -4,12 +4,15 @@ import { parse } from "../src/parser.ts";
 import { generateCspm } from "../src/cspm.ts";
 import { expectOk } from "./_helpers.ts";
 
-const cspmOf = (
+/** テストの Mermaid 入力をパースし、指定した補助情報を使って比較用の CSPm を生成する。 */
+function cspmOf(
     src: string,
     guards?: Map<string, string>,
     stateVars?: string[],
     eventPayloads?: Map<string, string[]>,
-): string => generateCspm(expectOk(parse(src)), guards, stateVars, eventPayloads);
+): string {
+    return generateCspm(expectOk(parse(src)), guards, stateVars, eventPayloads);
+}
 
 test("flat process emission (baseline, no event = no prefix, no tau)", () => {
     const out = cspmOf(`stateDiagram-v2

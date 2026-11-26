@@ -39,21 +39,19 @@ const RESERVED_NAMES = new Set([
     "or",
 ]);
 
-// 単純な正規表現で識別子を抽出する。演算子・数値・括弧は除外。
-const extractIdentifiers = (expr: string): string[] => {
+/** ガード式から識別子の形に一致する語を出現順に拾う。予約語かどうかは呼び出し側で判定する。 */
+function extractIdentifiers(expr: string): string[] {
     const matches = expr.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g);
     return [...matches].map((m) => m[0]);
-};
+}
 
-// V006 用: 名前を case-insensitive かつ underscore を除いた canonical 形にする。
-// 例: `CatalogSize` / `catalog_size` / `catalogsize` → 全部 `catalogsize`
-const normalizeName = (s: string): string => s.toLowerCase().replace(/_/g, "");
+/** V006 の表記揺れを検出するため、名前を小文字に揃え、アンダースコアを除く。 */
+function normalizeName(s: string): string {
+    return s.toLowerCase().replace(/_/g, "");
+}
 
-// V006 用: Levenshtein 1 相当を full DP テーブル無しに判定する。
-// - 同長: 1 substitution のみで一致するか
-// - 長さ差 1: 1 insertion / 1 deletion のみで一致するか
-// 完全一致 (`a === b`) は「off」ではないので false を返す。
-const isOneCharOff = (a: string, b: string): boolean => {
+/** 1文字だけ追加、削除、または置換すれば一致するかを調べる。完全に同じ名前には `false` を返す。 */
+function isOneCharOff(a: string, b: string): boolean {
     if (a === b) return false;
     const lenDiff = Math.abs(a.length - b.length);
     if (lenDiff > 1) return false;
@@ -67,7 +65,7 @@ const isOneCharOff = (a: string, b: string): boolean => {
         }
         return diffs === 1;
     }
-    // 長さ差 1: 短い方を長い方から 1 文字削除して一致するかを線形走査で確認
+    // 長い方の文字を一度だけ読み飛ばし、残りが短い方と一致するか調べる。
     const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
     let i = 0, j = 0;
     let skipped = false;
@@ -82,25 +80,29 @@ const isOneCharOff = (a: string, b: string): boolean => {
         }
     }
     return true;
-};
+}
 
-const collectTransitions = (diagram: Diagram): Transition[] => {
+/** 複合状態の内部も含め、検査対象の遷移をすべて列挙する。 */
+function collectTransitions(diagram: Diagram): Transition[] {
     const result: Transition[] = [];
-    const recur = (regions: Region[]): void => {
+    /** 各領域の遷移を結果に追加し、複合状態の子領域にも降りる。 */
+    function recur(regions: Region[]): void {
         for (const region of regions) {
             for (const stmt of region.stmts) {
                 if (stmt.kind === "transition") result.push(stmt);
                 else if (stmt.kind === "composite") recur(stmt.regions);
             }
         }
-    };
+    }
     recur(diagram.regions);
     return result;
-};
+}
 
-const collectComposites = (diagram: Diagram): Composite[] => {
+/** 各領域に入口があるかを検査するため、入れ子を含むすべての複合状態を集める。 */
+function collectComposites(diagram: Diagram): Composite[] {
     const result: Composite[] = [];
-    const recur = (regions: Region[]): void => {
+    /** 親の複合状態を記録してから子領域をたどり、内側の複合状態も結果に加える。 */
+    function recur(regions: Region[]): void {
         for (const region of regions) {
             for (const stmt of region.stmts) {
                 if (stmt.kind === "composite") {
@@ -109,17 +111,18 @@ const collectComposites = (diagram: Diagram): Composite[] => {
                 }
             }
         }
-    };
+    }
     recur(diagram.regions);
     return result;
-};
+}
 
-const regionHasEntry = (region: Region): boolean => {
+/** この領域の直下に、疑似状態 `[*]` から始まる入口遷移があるかを調べる。 */
+function regionHasEntry(region: Region): boolean {
     for (const stmt of region.stmts) {
         if (stmt.kind === "transition" && isPseudoState(stmt.from)) return true;
     }
     return false;
-};
+}
 
 /**
  * Parse 後の {@link Diagram} と前処理済みの {@link SpecDoc} に対して意味検証を走らせる。
@@ -143,7 +146,7 @@ const regionHasEntry = (region: Region): boolean => {
  * @param diagram - パース済み AST
  * @param doc     - `.md` 前処理で抽出した metadata
  */
-export const validate = (diagram: Diagram, doc: SpecDoc): ValidationReport => {
+export function validate(diagram: Diagram, doc: SpecDoc): ValidationReport {
     const issues: ValidationIssue[] = [];
     const transitions = collectTransitions(diagram);
     const composites = collectComposites(diagram);
@@ -299,13 +302,13 @@ export const validate = (diagram: Diagram, doc: SpecDoc): ValidationReport => {
     }
 
     return { issues };
-};
+}
 
-// 状態として宣言されているもの全て (composite ID + alias ID + transition の from/to に
-// 現れた非疑似 state)。
-const collectDeclaredStates = (diagram: Diagram): Set<string> => {
+/** 到達性の検査に使う状態名を集める。遷移にしか現れない状態も含め、疑似状態 `[*]` は除く。 */
+function collectDeclaredStates(diagram: Diagram): Set<string> {
     const declared = new Set<string>();
-    const recur = (regions: Region[]): void => {
+    /** 複合状態と別名宣言の ID、および遷移の両端に現れる実状態名を集合に追加する。 */
+    function recur(regions: Region[]): void {
         for (const region of regions) {
             for (const stmt of region.stmts) {
                 if (stmt.kind === "composite") {
@@ -319,18 +322,18 @@ const collectDeclaredStates = (diagram: Diagram): Set<string> => {
                 }
             }
         }
-    };
+    }
     recur(diagram.regions);
     return declared;
-};
+}
 
 /**
  * 1 件の issue を `warn V001: <message>\n  hint: <suggestion>` 形式に整形する。
  * CLI が stderr に出すときの想定形式。
  */
-export const formatIssue = (issue: ValidationIssue): string => {
+export function formatIssue(issue: ValidationIssue): string {
     const prefix = issue.level === "error" ? "error" : "warn";
     const lines = [`${prefix} ${issue.code}: ${issue.message}`];
     if (issue.suggestion) lines.push(`  hint: ${issue.suggestion}`);
     return lines.join("\n");
-};
+}

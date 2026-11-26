@@ -5,17 +5,22 @@ import { formatIssue, validate } from "../src/validate.ts";
 import type { SpecDoc } from "../src/spec_doc.ts";
 import { expectOk } from "./_helpers.ts";
 
-const mkDoc = (overrides: Partial<SpecDoc> = {}): SpecDoc => ({
-    mermaid: "",
-    guards: new Map(),
-    stateVars: [],
-    eventPayloads: new Map(),
-    liveness: [],
-    ...overrides,
-});
+/** 検査に使う表を空にした仕様を用意し、各テストが指定した項目だけを上書きする。 */
+function mkDoc(overrides: Partial<SpecDoc> = {}): SpecDoc {
+    return {
+        mermaid: "",
+        guards: new Map(),
+        stateVars: [],
+        eventPayloads: new Map(),
+        liveness: [],
+        ...overrides,
+    };
+}
 
-const validateOf = (src: string, doc?: Partial<SpecDoc>) =>
-    validate(expectOk(parse(src)), mkDoc(doc));
+/** パースの成功を確認した上で補助情報と突き合わせ、意味検査の結果を返す。 */
+function validateOf(src: string, doc?: Partial<SpecDoc>) {
+    return validate(expectOk(parse(src)), mkDoc(doc));
+}
 
 test("V001: guard tag missing from dictionary → warning", () => {
     const report = validateOf(`stateDiagram-v2

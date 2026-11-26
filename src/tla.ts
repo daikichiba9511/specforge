@@ -20,13 +20,15 @@ type Analysis = {
     regionEntries: Map<string, string>; // key: `${compositeId}:${regionIdx}` → 入口 state 名
 };
 
-const analyze = (diagram: Diagram): Analysis => {
+/** 遷移の所属領域、各領域の入口、最上位の状態名を集め、TLA+ の変数とアクションの生成に使う。 */
+function analyze(diagram: Diagram): Analysis {
     const transitions: Located<Transition>[] = [];
     const composites = new Map<string, Composite>();
     const topStates = new Set<string>();
     const regionEntries = new Map<string, string>();
 
-    const recur = (regions: Region[], parent: string | null): void => {
+    /** 領域ごとに最初の入口を記録し、複合状態に入るたびに親の ID を切り替えて子の遷移を収集する。 */
+    function recur(regions: Region[], parent: string | null): void {
         for (let i = 0; i < regions.length; i++) {
             const region = regions[i];
             const context: TransitionContext = parent === null
@@ -61,37 +63,43 @@ const analyze = (diagram: Diagram): Analysis => {
                 }
             }
         }
-    };
+    }
 
     recur(diagram.regions, null);
     return { transitions, composites, topStates, regionEntries };
-};
+}
 
-// CSPm/C 風の演算子 (`==`, `!=`, `&&`, `||`) を TLA+ 流 (`=`, `/=`, `/\\`, `\\/`) に置換する。
-const toTlaOperators = (expr: string): string =>
-    expr
+/** ガードで使う `==`、`!=`、`&&`、`||` を対応する TLA+ 演算子に置き換える。 */
+function toTlaOperators(expr: string): string {
+    return expr
         .replace(/!=/g, "/=")
         .replace(/==/g, "=")
         .replace(/&&/g, "/\\")
         .replace(/\|\|/g, "\\/");
+}
 
-const resolveGuard = (raw: string, guards: Map<string, string>): string =>
-    toTlaOperators(guards.get(raw) ?? raw);
+/** ガード名を辞書で展開し、TLA+ の演算子に変換する。辞書にない入力はそのまま式として変換する。 */
+function resolveGuard(raw: string, guards: Map<string, string>): string {
+    return toTlaOperators(guards.get(raw) ?? raw);
+}
 
-// state var 名の word-boundary 出現を `new_<name>` にリネームする (payload binding 用)。
-const renameInGuard = (expr: string, names: string[]): string => {
+/** ペイロードで更新する状態変数だけを、ガード内で `new_<変数名>` に置き換える。識別子の部分一致は除く。 */
+function renameInGuard(expr: string, names: string[]): string {
     let result = expr;
     for (const name of names) {
         const re = new RegExp(`\\b${name}\\b`, "g");
         result = result.replace(re, `new_${name}`);
     }
     return result;
-};
+}
 
-const regionVarName = (compositeId: string, regionIdx: number): string =>
-    `${compositeId.toLowerCase()}_r${regionIdx}`;
+/** 小文字にした複合状態 ID と 0 始まりの領域番号から、領域の現在状態を保持する変数名を作る。 */
+function regionVarName(compositeId: string, regionIdx: number): string {
+    return `${compositeId.toLowerCase()}_r${regionIdx}`;
+}
 
-const allRegionVars = (composites: Map<string, Composite>): string[] => {
+/** 生成順が安定するよう、複合状態 ID の辞書順、次に領域の定義順で変数名を列挙する。 */
+function allRegionVars(composites: Map<string, Composite>): string[] {
     const result: string[] = [];
     const ids = Array.from(composites.keys()).sort();
     for (const id of ids) {
@@ -101,16 +109,19 @@ const allRegionVars = (composites: Map<string, Composite>): string[] => {
         }
     }
     return result;
-};
+}
 
-const sanitize = (s: string): string =>
-    s.replace(/\[\*\]/g, "Final").replace(/[^A-Za-z0-9_]/g, "_");
+/** アクション名に使えるよう、疑似状態 `[*]` を `Final` に、英数字とアンダースコア以外の文字を `_` に置き換える。 */
+function sanitize(s: string): string {
+    return s.replace(/\[\*\]/g, "Final").replace(/[^A-Za-z0-9_]/g, "_");
+}
 
-const uniqueName = (base: string, used: Map<string, number>): string => {
+/** 同じ基本名の使用回数を記録し、2回目以降は `_2`、`_3` のように番号を付ける。 */
+function uniqueName(base: string, used: Map<string, number>): string {
     const n = (used.get(base) ?? 0) + 1;
     used.set(base, n);
     return n === 1 ? base : `${base}_${n}`;
-};
+}
 
 const REGION_DONE = `"_done"`;
 const REGION_INACTIVE = `"_inactive"`;
@@ -137,7 +148,11 @@ type ActionParts = {
     unchangedVars: string[];
 };
 
-const buildBody = (a: ActionParts): string => {
+/**
+ * 遷移条件と次状態の更新を一つのアクションにまとめる。
+ * ペイロードで束縛する新値は `Domain` から選び、残りの変数は `UNCHANGED` に含める。
+ */
+function buildBody(a: ActionParts): string {
     const outer = "    ";
     const inner = "         ";
     const lines: string[] = [];
@@ -166,9 +181,10 @@ const buildBody = (a: ActionParts): string => {
         lines.push(`${outer}/\\ UNCHANGED <<${a.unchangedVars.join(", ")}>>`);
     }
     return lines.join("\n");
-};
+}
 
-const formatTopAction = (t: Transition, ctx: EmitContext): string => {
+/** 最上位の遷移で `phase` とペイロードに対応する状態変数を更新し、すべての領域変数を保持する。 */
+function formatTopAction(t: Transition, ctx: EmitContext): string {
     const bound = boundStateVarsForTransition(t, ctx);
     return buildBody({
         preconditions: [`phase = "${t.from}"`],
@@ -181,14 +197,15 @@ const formatTopAction = (t: Transition, ctx: EmitContext): string => {
             ...ctx.regionVars,
         ],
     });
-};
+}
 
-const formatEnterCompositeAction = (
+/** 複合状態への遷移では各領域を入口状態に初期化する。入口が指定されていない領域には `_inactive` を設定する。 */
+function formatEnterCompositeAction(
     t: Transition,
     targetComposite: string,
     ctx: EmitContext,
     regionEntries: Map<string, string>,
-): string => {
+): string {
     const bound = boundStateVarsForTransition(t, ctx);
     const target = ctx.composites.get(targetComposite)!;
     const initRegions: string[] = [];
@@ -210,13 +227,14 @@ const formatEnterCompositeAction = (
             ...ctx.regionVars.filter((r) => !initRegions.includes(r)),
         ],
     });
-};
+}
 
-const formatExitCompositeAction = (
+/** 退出する複合状態の領域を非アクティブに戻す。イベントを伴わない完了遷移では、全領域の完了を前提条件に加える。 */
+function formatExitCompositeAction(
     t: Transition,
     sourceComposite: string,
     ctx: EmitContext,
-): string => {
+): string {
     const bound = boundStateVarsForTransition(t, ctx);
     const source = ctx.composites.get(sourceComposite)!;
     const isCompletion = t.label.event === null;
@@ -248,14 +266,15 @@ const formatExitCompositeAction = (
             ...ctx.regionVars.filter((r) => !resetRegions.includes(r)),
         ],
     });
-};
+}
 
-const formatRegionAction = (
+/** 複合状態内で一つの領域を進める。`[*]` に達した領域を `_done` にし、親の `phase` と他の領域の値は保持する。 */
+function formatRegionAction(
     t: Transition,
     compositeId: string,
     regionIdx: number,
     ctx: EmitContext,
-): string => {
+): string {
     const bound = boundStateVarsForTransition(t, ctx);
     const regionVar = regionVarName(compositeId, regionIdx);
     const newValue = isPseudoState(t.to) ? REGION_DONE : `"${t.to}"`;
@@ -271,17 +290,20 @@ const formatRegionAction = (
             ...ctx.regionVars.filter((r) => r !== regionVar),
         ],
     });
-};
+}
 
-const formatStateSet = (states: Set<string>): string =>
-    `{${Array.from(states).map((s) => `"${s}"`).join(", ")}}`;
+/** 状態名を文字列リテラルとして並べた TLA+ の集合を返す。空集合は `{}` と表記する。 */
+function formatStateSet(states: Set<string>): string {
+    return `{${Array.from(states).map((s) => `"${s}"`).join(", ")}}`;
+}
 
-const hasAnyPayloadBinding = (analysis: Analysis, ctx: EmitContext): boolean => {
+/** ペイロードで状態変数を更新する遷移があるか調べ、生成するモジュールに `Domain` が必要かを判定する。 */
+function hasAnyPayloadBinding(analysis: Analysis, ctx: EmitContext): boolean {
     for (const { t } of analysis.transitions) {
         if (boundStateVarsForTransition(t, ctx).length > 0) return true;
     }
     return false;
-};
+}
 
 /**
  * {@link Diagram} から TLA+ (TLC 入力) 文字列を生成する。
@@ -292,7 +314,7 @@ const hasAnyPayloadBinding = (analysis: Analysis, ctx: EmitContext): boolean => 
  * - composite には region 変数 `<composite>_r<N>` を追加し、入口/_done/_inactive で region 進行を track
  * - event payload field 名が state var 名と一致する場合、 `\E new_<var> \in Domain:` で
  *   非決定的に値を bind し、guard 内の変数参照を rename、`<var>' = new_<var>` で更新
- * - Domain は `0..1` 固定 (TLC の状態空間を小さく保つ)
+ * - ペイロードの値域は `0..bound`。既定の上限は 1
  * - terminal state は `Stutter == phase \in TerminalStates /\ UNCHANGED vars` で TLC の
  *   deadlock false-positive を回避
  *
@@ -307,7 +329,7 @@ const hasAnyPayloadBinding = (analysis: Analysis, ctx: EmitContext): boolean => 
  *                        `Fairness == WF_vars(Next)` と各 property 定義が emit される。
  *                        省略時 空 (safety のみ、 fairness 無し)
  */
-export const generateTla = (
+export function generateTla(
     diagram: Diagram,
     guards: Map<string, string> = new Map(),
     stateVars: string[] = [],
@@ -315,7 +337,7 @@ export const generateTla = (
     moduleName: string = "Spec",
     bound: number = 1,
     liveness: LivenessProp[] = [],
-): string => {
+): string {
     const analysis = analyze(diagram);
     const { initialState, terminal } = topLevelFlow(diagram);
 
@@ -472,4 +494,4 @@ export const generateTla = (
 
     lines.push(`====`);
     return lines.join("\n");
-};
+}

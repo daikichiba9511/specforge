@@ -19,7 +19,9 @@ export type PseudoState = typeof PSEUDO_STATE;
 /**
  * `s` が擬似状態かを判定する type guard。
  */
-export const isPseudoState = (s: string): s is PseudoState => s === PSEUDO_STATE;
+export function isPseudoState(s: string): s is PseudoState {
+    return s === PSEUDO_STATE;
+}
 
 /**
  * 遷移ラベル `event [guard] / action1, action2, ...` の構造化表現。
