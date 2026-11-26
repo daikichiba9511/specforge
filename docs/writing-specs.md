@@ -317,7 +317,7 @@ stateDiagram-v2
 リポジトリ内では次のコマンドを実行する。
 
 ```bash
-deno task cli --json --strict path/to/spec.md
+bun run cli --json --strict path/to/spec.md
 ```
 
 インストール済みの実行ファイルを使う場合は次を実行する。
@@ -339,7 +339,7 @@ specforge --json --strict path/to/spec.md
 Javaと`tla2tools.jar`を用意した環境では次を実行する。
 
 ```bash
-deno task verify --strict --bound=3 path/to/spec.md
+bun run verify --strict --bound=3 path/to/spec.md
 ```
 
 実行ファイルを使う場合は次を実行する。

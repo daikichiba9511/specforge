@@ -28,7 +28,7 @@ const RE_ALIAS = /^state\s+"(?<description>[^"]*)"\s+as\s+(?<id>[A-Za-z_][A-Za-z
 const RE_STATE_DECL = /^state\s+(?<id>[A-Za-z_][A-Za-z0-9_]*)$/;
 const RE_TRANSITION =
     /^(?<from>\[\*\]|[A-Za-z_][A-Za-z0-9_]*)\s*-->\s*(?<to>\[\*\]|[A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*(?<label>.*))?$/;
-const RE_LABEL = /^(?<event>[^\[\/]*?)\s*(?:\[(?<guard>[^\]]+)\])?\s*(?:\/\s*(?<action>.+))?$/;
+const RE_LABEL = /^(?<event>[^[/]*?)\s*(?:\[(?<guard>[^\]]+)\])?\s*(?:\/\s*(?<action>.+))?$/;
 // event 名 + 引数括弧の分解。 例: `coin_inserted(balance)` → name=coin_inserted、 args=balance
 // 引数なしの `timer` / `timer()` 両方を受理する。
 const RE_EVENT_NAME = /^(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?:\((?<args>[^)]*)\))?$/;

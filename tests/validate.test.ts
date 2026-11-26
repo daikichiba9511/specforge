@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
+import { expect, test } from "bun:test";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { parse } from "../src/parser.ts";
 import { formatIssue, validate } from "../src/validate.ts";
 import type { SpecDoc } from "../src/spec_doc.ts";
@@ -16,15 +17,15 @@ const mkDoc = (overrides: Partial<SpecDoc> = {}): SpecDoc => ({
 const validateOf = (src: string, doc?: Partial<SpecDoc>) =>
     validate(expectOk(parse(src)), mkDoc(doc));
 
-Deno.test("V001: guard tag missing from dictionary → warning", () => {
+test("V001: guard tag missing from dictionary → warning", () => {
     const report = validateOf(`stateDiagram-v2
 A --> B : ev [unknown_guard]`);
     const v001 = report.issues.filter((i) => i.code === "V001");
     assertEquals(v001.length, 1);
-    assertStringIncludes(v001[0].message, "unknown_guard");
+    expect(v001[0].message).toContain("unknown_guard");
 });
 
-Deno.test("V001: guard tag present in dictionary → no warning", () => {
+test("V001: guard tag present in dictionary → no warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev [ok]`,
@@ -33,7 +34,7 @@ A --> B : ev [ok]`,
     assertEquals(report.issues.filter((i) => i.code === "V001").length, 0);
 });
 
-Deno.test("V002: variable in guard expression not declared anywhere → warning", () => {
+test("V002: variable in guard expression not declared anywhere → warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev [ok]`,
@@ -41,10 +42,10 @@ A --> B : ev [ok]`,
     );
     const v002 = report.issues.filter((i) => i.code === "V002");
     assertEquals(v002.length, 1);
-    assertStringIncludes(v002[0].message, "missing_var");
+    expect(v002[0].message).toContain("missing_var");
 });
 
-Deno.test("V002: variable in state vars → no warning", () => {
+test("V002: variable in state vars → no warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev [ok]`,
@@ -56,7 +57,7 @@ A --> B : ev [ok]`,
     assertEquals(report.issues.filter((i) => i.code === "V002").length, 0);
 });
 
-Deno.test("V002: variable bound by event payload → no warning", () => {
+test("V002: variable bound by event payload → no warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev [ok]`,
@@ -68,7 +69,7 @@ A --> B : ev [ok]`,
     assertEquals(report.issues.filter((i) => i.code === "V002").length, 0);
 });
 
-Deno.test("V002: TRUE / FALSE / in are treated as keywords, not variables", () => {
+test("V002: TRUE / FALSE / in are treated as keywords, not variables", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev [g]`,
@@ -80,7 +81,7 @@ A --> B : ev [g]`,
     assertEquals(report.issues.filter((i) => i.code === "V002").length, 0);
 });
 
-Deno.test("V002: numeric literals are not flagged", () => {
+test("V002: numeric literals are not flagged", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev [g]`,
@@ -92,17 +93,17 @@ A --> B : ev [g]`,
     assertEquals(report.issues.filter((i) => i.code === "V002").length, 0);
 });
 
-Deno.test("V003: composite region without [*] -->" + " entry → warning", () => {
+test("V003: composite region without [*] -->" + " entry → warning", () => {
     const report = validateOf(`stateDiagram-v2
 state Outer {
     A --> B
 }`);
     const v003 = report.issues.filter((i) => i.code === "V003");
     assertEquals(v003.length, 1);
-    assertStringIncludes(v003[0].message, "Outer");
+    expect(v003[0].message).toContain("Outer");
 });
 
-Deno.test("V003: composite region WITH [*] --> entry → no warning", () => {
+test("V003: composite region WITH [*] --> entry → no warning", () => {
     const report = validateOf(`stateDiagram-v2
 state Outer {
     [*] --> A
@@ -111,7 +112,7 @@ state Outer {
     assertEquals(report.issues.filter((i) => i.code === "V003").length, 0);
 });
 
-Deno.test("V003: orthogonal composite: per-region check", () => {
+test("V003: orthogonal composite: per-region check", () => {
     const report = validateOf(`stateDiagram-v2
 state Outer {
     [*] --> A
@@ -122,21 +123,21 @@ state Outer {
     // region 0 has entry, region 1 doesn't → 1 warning
     const v003 = report.issues.filter((i) => i.code === "V003");
     assertEquals(v003.length, 1);
-    assertStringIncludes(v003[0].message, "region 1");
+    expect(v003[0].message).toContain("region 1");
 });
 
-Deno.test("formatIssue includes code, message, hint", () => {
+test("formatIssue includes code, message, hint", () => {
     const out = formatIssue({
         level: "warning",
         code: "V999",
         message: "something happened",
         suggestion: "do X instead",
     });
-    assertStringIncludes(out, "warn V999: something happened");
-    assertStringIncludes(out, "hint: do X instead");
+    expect(out).toContain("warn V999: something happened");
+    expect(out).toContain("hint: do X instead");
 });
 
-Deno.test("V004: state declared but no transition leads to it → warning", () => {
+test("V004: state declared but no transition leads to it → warning", () => {
     const report = validateOf(`stateDiagram-v2
 state Orphan
 [*] --> A
@@ -145,10 +146,10 @@ B --> [*]
 Orphan --> B`);
     const v004 = report.issues.filter((i) => i.code === "V004");
     assertEquals(v004.length, 1);
-    assertStringIncludes(v004[0].message, "Orphan");
+    expect(v004[0].message).toContain("Orphan");
 });
 
-Deno.test("V004: every declared state reachable → no warning", () => {
+test("V004: every declared state reachable → no warning", () => {
     const report = validateOf(`stateDiagram-v2
 [*] --> A
 A --> B
@@ -156,7 +157,7 @@ B --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V004").length, 0);
 });
 
-Deno.test("V004: alias with reachable transition → no warning", () => {
+test("V004: alias with reachable transition → no warning", () => {
     const report = validateOf(`stateDiagram-v2
 state "開始" as Start
 state "終了" as End
@@ -166,7 +167,7 @@ End --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V004").length, 0);
 });
 
-Deno.test("V004: composite ID with inbound transition → reachable", () => {
+test("V004: composite ID with inbound transition → reachable", () => {
     const report = validateOf(`stateDiagram-v2
 state Outer {
     [*] --> Inner
@@ -179,24 +180,24 @@ Done --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V004").length, 0);
 });
 
-Deno.test("V005: reachable state with no outbound → warning", () => {
+test("V005: reachable state with no outbound → warning", () => {
     const report = validateOf(`stateDiagram-v2
 [*] --> A
 A --> Stuck
 A --> [*]`);
     const v005 = report.issues.filter((i) => i.code === "V005");
     assertEquals(v005.length, 1);
-    assertStringIncludes(v005[0].message, "Stuck");
+    expect(v005[0].message).toContain("Stuck");
 });
 
-Deno.test("V005: state with `--> [*]` outbound → no warning", () => {
+test("V005: state with `--> [*]` outbound → no warning", () => {
     const report = validateOf(`stateDiagram-v2
 [*] --> A
 A --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V005").length, 0);
 });
 
-Deno.test("V005: unreachable stuck state → V004 fires, V005 does not (mutually exclusive)", () => {
+test("V005: unreachable stuck state → V004 fires, V005 does not (mutually exclusive)", () => {
     const report = validateOf(`stateDiagram-v2
 state Orphan
 [*] --> A
@@ -205,7 +206,7 @@ A --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V005").length, 0);
 });
 
-Deno.test("V005: stuck state inside composite region → warning", () => {
+test("V005: stuck state inside composite region → warning", () => {
     const report = validateOf(`stateDiagram-v2
 state Outer {
     [*] --> Inner
@@ -216,21 +217,21 @@ Outer --> Done : / finish
 Done --> [*]`);
     const v005 = report.issues.filter((i) => i.code === "V005");
     assertEquals(v005.length, 1);
-    assertStringIncludes(v005[0].message, "Stuck");
+    expect(v005[0].message).toContain("Stuck");
 });
 
-Deno.test("V007: identical transitions (action only differs) → warning", () => {
+test("V007: identical transitions (action only differs) → warning", () => {
     const report = validateOf(`stateDiagram-v2
 A --> B : ev / action1
 A --> B : ev / action2
 B --> [*]`);
     const v007 = report.issues.filter((i) => i.code === "V007");
     assertEquals(v007.length, 1);
-    assertStringIncludes(v007[0].message, "A --> B");
-    assertStringIncludes(v007[0].message, ": ev");
+    expect(v007[0].message).toContain("A --> B");
+    expect(v007[0].message).toContain(": ev");
 });
 
-Deno.test("V007: same event with different guards → no warning", () => {
+test("V007: same event with different guards → no warning", () => {
     const report = validateOf(`stateDiagram-v2
 A --> B : ev [g1]
 A --> B : ev [g2]
@@ -238,7 +239,7 @@ B --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V007").length, 0);
 });
 
-Deno.test("V007: different events → no warning", () => {
+test("V007: different events → no warning", () => {
     const report = validateOf(`stateDiagram-v2
 A --> B : ev1
 A --> B : ev2
@@ -246,7 +247,7 @@ B --> [*]`);
     assertEquals(report.issues.filter((i) => i.code === "V007").length, 0);
 });
 
-Deno.test("V007: completely identical 3 transitions → warning mentions count", () => {
+test("V007: completely identical 3 transitions → warning mentions count", () => {
     const report = validateOf(`stateDiagram-v2
 A --> B : ev [g]
 A --> B : ev [g]
@@ -254,10 +255,10 @@ A --> B : ev [g]
 B --> [*]`);
     const v007 = report.issues.filter((i) => i.code === "V007");
     assertEquals(v007.length, 1);
-    assertStringIncludes(v007[0].message, "3 transitions");
+    expect(v007[0].message).toContain("3 transitions");
 });
 
-Deno.test("V006: payload field exact match with state var → no warning (Phase 2 binding)", () => {
+test("V006: payload field exact match with state var → no warning (Phase 2 binding)", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev
@@ -270,7 +271,7 @@ B --> [*]`,
     assertEquals(report.issues.filter((i) => i.code === "V006").length, 0);
 });
 
-Deno.test("V006: payload field 1 char off from state var (substitution) → warning", () => {
+test("V006: payload field 1 char off from state var (substitution) → warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev
@@ -282,12 +283,12 @@ B --> [*]`,
     );
     const v006 = report.issues.filter((i) => i.code === "V006");
     assertEquals(v006.length, 1);
-    assertStringIncludes(v006[0].message, "ballance");
-    assertStringIncludes(v006[0].message, "balance");
-    assertStringIncludes(v006[0].message, "1 character off");
+    expect(v006[0].message).toContain("ballance");
+    expect(v006[0].message).toContain("balance");
+    expect(v006[0].message).toContain("1 character off");
 });
 
-Deno.test("V006: payload field normalizes to state var (case mismatch) → warning", () => {
+test("V006: payload field normalizes to state var (case mismatch) → warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev
@@ -299,12 +300,12 @@ B --> [*]`,
     );
     const v006 = report.issues.filter((i) => i.code === "V006");
     assertEquals(v006.length, 1);
-    assertStringIncludes(v006[0].message, "CatalogSize");
-    assertStringIncludes(v006[0].message, "catalog_size");
-    assertStringIncludes(v006[0].message, "normalizes");
+    expect(v006[0].message).toContain("CatalogSize");
+    expect(v006[0].message).toContain("catalog_size");
+    expect(v006[0].message).toContain("normalizes");
 });
 
-Deno.test("V006: underscore difference → normalized match warning", () => {
+test("V006: underscore difference → normalized match warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev
@@ -316,10 +317,10 @@ B --> [*]`,
     );
     const v006 = report.issues.filter((i) => i.code === "V006");
     assertEquals(v006.length, 1);
-    assertStringIncludes(v006[0].message, "normalizes");
+    expect(v006[0].message).toContain("normalizes");
 });
 
-Deno.test("V006: completely different name → no warning", () => {
+test("V006: completely different name → no warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev
@@ -332,7 +333,7 @@ B --> [*]`,
     assertEquals(report.issues.filter((i) => i.code === "V006").length, 0);
 });
 
-Deno.test("V006: 1 char insertion (`count` vs `counts`) → warning", () => {
+test("V006: 1 char insertion (`count` vs `counts`) → warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev
@@ -346,7 +347,7 @@ B --> [*]`,
     assertEquals(v006.length, 1);
 });
 
-Deno.test("V006: 1 char deletion (`catlog` vs `catalog`) → warning", () => {
+test("V006: 1 char deletion (`catlog` vs `catalog`) → warning", () => {
     const report = validateOf(
         `stateDiagram-v2
 A --> B : ev
@@ -360,7 +361,7 @@ B --> [*]`,
     assertEquals(v006, 1);
 });
 
-Deno.test("clean spec produces no issues", () => {
+test("clean spec produces no issues", () => {
     const report = validateOf(
         `stateDiagram-v2
 [*] --> A

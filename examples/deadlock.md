@@ -72,7 +72,7 @@ stateDiagram-v2
 ## 検証手順 (意図的に失敗する例)
 
 ```bash
-$ deno task verify examples/deadlock.md
+$ bun run verify examples/deadlock.md
 verification failed (code 11)
 
 TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)

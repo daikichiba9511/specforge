@@ -64,7 +64,7 @@ stateDiagram-v2
 | `Parsing`     | Mermaid図とMarkdown表を、機械が扱える抽象構文木へ変換する |
 | `Validating`  | 構文解析後の名前、参照、到達可能性などを静的に調べる      |
 | `Dispatching` | 通常の変換と、TLCまで実行する検証のどちらへ進むかを選ぶ   |
-| `Generating`  | 選択されたJSON、TLA+、CSPmのいずれかを生成する            |
+| `Generating`  | 選択されたJSON、TLA+、Quint、CSPmのいずれかを生成する     |
 | `Verifying`   | TLA+と設定ファイルを生成し、TLCを実行する                 |
 | `Done`        | 終了コード0で正常終了する                                 |
 | `Failed`      | エラーを報告し、0以外の終了コードで終了する               |
@@ -90,14 +90,14 @@ stateDiagram-v2
 
 `strict_mode`と`verify_mode`は、0を無効、0より大きい値を有効として扱う。
 
-| ガードID                  | 条件                                                        | 意味                                       |
-| ------------------------- | ----------------------------------------------------------- | ------------------------------------------ |
-| `accepted_lenient`        | `error_count == 0 && strict_mode == 0`                      | 通常モードでエラーがない                   |
-| `accepted_strict`         | `error_count == 0 && strict_mode > 0 && warning_count == 0` | 厳格モードでエラーも警告もない             |
-| `rejected_error`          | `error_count > 0`                                           | 一件以上のエラーがある                     |
-| `rejected_strict_warning` | `error_count == 0 && strict_mode > 0 && warning_count > 0`  | 厳格モードで一件以上の警告がある           |
-| `verify_requested`        | `verify_mode > 0`                                           | `verify`サブコマンドが指定された           |
-| `output_requested`        | `verify_mode == 0`                                          | JSON、TLA+、CSPmのいずれかを標準出力へ書く |
+| ガードID                  | 条件                                                        | 意味                                              |
+| ------------------------- | ----------------------------------------------------------- | ------------------------------------------------- |
+| `accepted_lenient`        | `error_count == 0 && strict_mode == 0`                      | 通常モードでエラーがない                          |
+| `accepted_strict`         | `error_count == 0 && strict_mode > 0 && warning_count == 0` | 厳格モードでエラーも警告もない                    |
+| `rejected_error`          | `error_count > 0`                                           | 一件以上のエラーがある                            |
+| `rejected_strict_warning` | `error_count == 0 && strict_mode > 0 && warning_count > 0`  | 厳格モードで一件以上の警告がある                  |
+| `verify_requested`        | `verify_mode > 0`                                           | `verify`サブコマンドが指定された                  |
+| `output_requested`        | `verify_mode == 0`                                          | JSON、TLA+、Quint、CSPmのいずれかを標準出力へ書く |
 
 ## 共有状態
 
@@ -111,7 +111,7 @@ stateDiagram-v2
 ## アクション定義
 
 アクションは遷移時に行う処理の名前である。
-CSPm出力では名前をイベントとして残すが、TLA+出力では現在アクションの内部処理を表現しない。
+CSPm出力では名前をイベントとして残すが、TLA+出力とQuint出力では現在アクションの内部処理を表現しない。
 どちらの場合も、ファイル書き込みなどの実際の副作用は検査しない。
 
 | アクション                    | 意味                                       |
@@ -123,7 +123,7 @@ CSPm出力では名前をイベントとして残すが、TLA+出力では現在
 | `report_input_error`          | 入力ファイルの読み込みエラーを報告する     |
 | `report_parse_error`          | 構文エラーを報告する                       |
 | `report_validation_error`     | 静的検査を通過できなかった理由を報告する   |
-| `select_output_format`        | JSON、TLA+、CSPmの出力形式を選ぶ           |
+| `select_output_format`        | JSON、TLA+、Quint、CSPmの出力形式を選ぶ    |
 | `generate_tla_input`          | TLCへ渡すTLA+と設定を生成する              |
 | `write_output`                | 生成結果を標準出力へ書く                   |
 | `report_generation_error`     | 生成時のエラーを報告する                   |
@@ -146,8 +146,8 @@ CSPm出力では名前をイベントとして残すが、TLA+出力では現在
 - 未定義イベントは無視する。
 - `strict_mode`が0の場合、警告を表示して処理を続ける。
 - `strict_mode`が0より大きい場合、警告が一件以上あれば失敗する。
-- `verify_mode`が0の場合、`--json`と`--tla`の指定に応じた形式を生成する。
-  どちらもなければCSPmを生成する。
+- `verify_mode`が0の場合、`--json`、`--tla`、`--quint`の指定に応じた形式を生成する。
+  いずれもなければCSPmを生成する。
 - `verify_mode`が0より大きい場合、TLA+を生成してTLCを実行する。 FDR4は起動しない。
 - TLCの失敗結果は要約して表示する。 現在のCLIは反例の状態列をそのまま表示しない。
 - 構文解析に失敗した場合は途中までの抽象構文木を返さない。
@@ -157,8 +157,8 @@ CSPm出力では名前をイベントとして残すが、TLA+出力では現在
 ## この仕様を検査する
 
 ```bash
-deno task cli --json --strict docs/behavior.md
-deno task verify --strict --bound=3 docs/behavior.md
+bun run cli --json --strict docs/behavior.md
+bun run verify --strict --bound=3 docs/behavior.md
 ```
 
 最初のコマンドは構文と静的な不整合を調べる。

@@ -10,10 +10,15 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
-            - uses: denoland/setup-deno@v2
-              with:
-                  deno-version: v2.x
-            - run: deno task fmt --check
-            - run: deno lint
-            - run: deno check src/**/*.ts tests/**/*.ts
-            - run: deno test --allow-read=.agents/skills,docs
+            - uses: oven-sh/setup-bun@v2
+            - run: bun install --frozen-lockfile
+            - run: bun run fmt:check
+            - run: bun run lint
+            - run: bun run check
+            - run: bun run test
+            - run: bun run compile
+            - run: ./bin/specforge --json --strict docs/behavior.md > /dev/null
+            - name: Test the exported Quint vending model
+              run: |
+                  ./bin/specforge --quint --strict --bound=3 examples/vending-machine.md > examples/quint/Spec.qnt
+                  bunx --bun --package @informalsystems/quint@0.34.0 quint test examples/quint/vending-tests.qnt --backend=typescript --max-samples=20 --seed=0x42

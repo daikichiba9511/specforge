@@ -8,12 +8,11 @@ PoC 期から積み上げた設計上の判断と、 まだ未決の問題のメ
 
 ## 採用済の判断
 
-### D-01: Deno 2.x を runtime に採用
+### D-01: CLI の実行・ビルドには Bun を使う
 
-- Bun はコールドスタートが速く momentum もあるが、 長寿 CLI ツールには Deno の API 安定性が優位
-  (slower API evolution、 fewer breaking changes)
-- ソースは `node:` prefix import で書いてあるので Bun / Node でも実行可能 (dev iteration 用)。
-  runtime 差は CLI entrypoint 周りのみ
+当初は Deno 2.x を採用した。2026年10月に Deno チームは新機能の開発終了と2027年10月までの保守方針を公表した。[Deno チームの発表](https://github.com/denoland/deno/issues/37030)
+
+2026年11月に Bun へ移行した。TypeScript の実装を引き継ぎ、`bun build --compile` で利用者に単体の実行ファイルを配布できる。Java と TLC はこれまでどおり `verify` で使う。
 
 ### D-02: parser は hand-roll (`npm:mermaid` を使わない)
 
@@ -28,8 +27,7 @@ hitl spec と spec-behavior examples で受理確認済。
 
 ### D-03: parser / codegen は zero third-party deps
 
-portability + stability 優先。 テストフレームワーク `jsr:@std/assert` のみ標準ライブラリから採用。
-ソースは runtime-neutral (`node:fs` / `node:process`) で Bun / Node でも動かせる。
+構文解析器とコード生成器は外部パッケージに依存しない。ファイル操作や TLC の起動には `node:` 標準 API を使う。テスト、型検査、整形、lint、ベンチマークのための依存は開発時だけ使う。
 
 ### D-04: TLA+ + TLC を primary、 CSPm + FDR4 を secondary
 

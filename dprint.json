@@ -1,0 +1,18 @@
+{
+    "lineWidth": 100,
+    "indentWidth": 4,
+    "typescript": { "deno": true, "lineWidth": 100, "indentWidth": 4 },
+    "markdown": { "textWrap": "maintain" },
+    "excludes": [
+        "**/node_modules",
+        "bin",
+        ".claude/settings.local.json",
+        ".agents/skills/spec-behavior-workspace"
+    ],
+    "plugins": [
+        "https://plugins.dprint.dev/typescript-0.101.0.wasm",
+        "https://plugins.dprint.dev/json-0.26.0.wasm",
+        "https://plugins.dprint.dev/markdown-0.29.0.wasm",
+        "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.6.0.wasm"
+    ]
+}

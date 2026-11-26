@@ -1,9 +1,10 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { test } from "bun:test";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { parse, type ParseError } from "../src/parser.ts";
 import type { Diagram } from "../src/types.ts";
 import { expectErr, expectOk } from "./_helpers.ts";
 
-Deno.test("parses minimal stateDiagram-v2", () => {
+test("parses minimal stateDiagram-v2", () => {
     const diagram: Diagram = expectOk(parse(`stateDiagram-v2
     [*] --> A`));
     assertEquals(diagram.type, "stateDiagram-v2");
@@ -11,7 +12,7 @@ Deno.test("parses minimal stateDiagram-v2", () => {
     assertEquals(diagram.regions[0].stmts.length, 1);
 });
 
-Deno.test("parses transition with guard and action", () => {
+test("parses transition with guard and action", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : event_name [guard_id] / action_id`));
     const stmt = diagram.regions[0].stmts[0];
@@ -23,7 +24,7 @@ Deno.test("parses transition with guard and action", () => {
     assertEquals(stmt.label.actions, ["action_id"]);
 });
 
-Deno.test("splits action chain on top-level commas", () => {
+test("splits action chain on top-level commas", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : ev / write_task, write_failed_list`));
     const t = diagram.regions[0].stmts[0];
@@ -31,7 +32,7 @@ Deno.test("splits action chain on top-level commas", () => {
     assertEquals(t.label.actions, ["write_task", "write_failed_list"]);
 });
 
-Deno.test("preserves commas inside parens in action chain", () => {
+test("preserves commas inside parens in action chain", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : ev / write_task(item_id, count), notify(user)`));
     const t = diagram.regions[0].stmts[0];
@@ -39,7 +40,7 @@ Deno.test("preserves commas inside parens in action chain", () => {
     assertEquals(t.label.actions, ["write_task(item_id, count)", "notify(user)"]);
 });
 
-Deno.test("parses composite state with orthogonal regions", () => {
+test("parses composite state with orthogonal regions", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     state Outer {
         [*] --> A
@@ -52,7 +53,7 @@ Deno.test("parses composite state with orthogonal regions", () => {
     assertEquals(composite.regions.length, 2);
 });
 
-Deno.test("parses alias with quoted description", () => {
+test("parses alias with quoted description", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     state "待ち状態" as Waiting`));
     const alias = diagram.regions[0].stmts[0];
@@ -61,20 +62,20 @@ Deno.test("parses alias with quoted description", () => {
     assertEquals(alias.description, "待ち状態");
 });
 
-Deno.test("rejects missing header", () => {
+test("rejects missing header", () => {
     const e: ParseError = expectErr(parse(`[*] --> A`));
     assertEquals(e.kind, "ParseError");
     assertEquals(e.message.includes("stateDiagram-v2"), true);
 });
 
-Deno.test("strips line comments", () => {
+test("strips line comments", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     %% this comment is stripped
     A --> B`));
     assertEquals(diagram.regions[0].stmts.length, 1);
 });
 
-Deno.test("parses label with only event", () => {
+test("parses label with only event", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : timer`));
     const t = diagram.regions[0].stmts[0];
@@ -84,7 +85,7 @@ Deno.test("parses label with only event", () => {
     assertEquals(t.label.actions, []);
 });
 
-Deno.test("parses label with only action (completion transition)", () => {
+test("parses label with only action (completion transition)", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : / notify_complete`));
     const t = diagram.regions[0].stmts[0];
@@ -93,7 +94,7 @@ Deno.test("parses label with only action (completion transition)", () => {
     assertEquals(t.label.actions, ["notify_complete"]);
 });
 
-Deno.test("event with single arg: bare name + eventArgs", () => {
+test("event with single arg: bare name + eventArgs", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : coin_inserted(balance)`));
     const t = diagram.regions[0].stmts[0];
@@ -102,7 +103,7 @@ Deno.test("event with single arg: bare name + eventArgs", () => {
     assertEquals(t.label.eventArgs, ["balance"]);
 });
 
-Deno.test("event with multiple args: split on comma, trim", () => {
+test("event with multiple args: split on comma, trim", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : log(level, msg)`));
     const t = diagram.regions[0].stmts[0];
@@ -111,7 +112,7 @@ Deno.test("event with multiple args: split on comma, trim", () => {
     assertEquals(t.label.eventArgs, ["level", "msg"]);
 });
 
-Deno.test("event with empty parens: name only, args empty", () => {
+test("event with empty parens: name only, args empty", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : timer()`));
     const t = diagram.regions[0].stmts[0];
@@ -120,7 +121,7 @@ Deno.test("event with empty parens: name only, args empty", () => {
     assertEquals(t.label.eventArgs, []);
 });
 
-Deno.test("event without parens: eventArgs is empty array", () => {
+test("event without parens: eventArgs is empty array", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : timer`));
     const t = diagram.regions[0].stmts[0];
@@ -129,7 +130,7 @@ Deno.test("event without parens: eventArgs is empty array", () => {
     assertEquals(t.label.eventArgs, []);
 });
 
-Deno.test("event with args + guard + action: all parsed independently", () => {
+test("event with args + guard + action: all parsed independently", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : coin_inserted(balance) [balance > 0] / log_change`));
     const t = diagram.regions[0].stmts[0];
@@ -140,7 +141,7 @@ Deno.test("event with args + guard + action: all parsed independently", () => {
     assertEquals(t.label.actions, ["log_change"]);
 });
 
-Deno.test("completion transition (no event): eventArgs is empty", () => {
+test("completion transition (no event): eventArgs is empty", () => {
     const diagram = expectOk(parse(`stateDiagram-v2
     A --> B : / notify`));
     const t = diagram.regions[0].stmts[0];
@@ -149,7 +150,7 @@ Deno.test("completion transition (no event): eventArgs is empty", () => {
     assertEquals(t.label.eventArgs, []);
 });
 
-Deno.test("reports error line number for unrecognized statement", () => {
+test("reports error line number for unrecognized statement", () => {
     const e = expectErr(parse(`stateDiagram-v2
     A --> B
     bogus statement here

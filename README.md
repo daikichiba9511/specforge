@@ -8,7 +8,7 @@ specforgeは、Mermaid
 specforgeは通常、システムの状態変化を論理式で記述する言語であるTLA+を生成し、そのモデル検査器であるTLCへ渡します。
 プロセス間のイベント列を記述するCSPm形式への変換にも対応しており、生成結果はCSPmのモデル検査器であるFDR4へ渡せます。
 
-個人の仕様作成を支えるために開発していますが、リポジトリをクローンしてTypeScriptの実行環境であるDenoでビルドすれば、単体の実行ファイルとして利用できます。
+個人の仕様作成を支えるために開発していますが、リポジトリをクローンしてTypeScriptの実行環境であるBunでビルドすれば、単体の実行ファイルとして利用できます。
 現在はパッケージレジストリやリリースバイナリでは配布していません。
 
 ## 振る舞い仕様が必要になる場面
@@ -242,7 +242,7 @@ stateDiagram-v2
 `<>Terminated`は「いつか処理の完了を表す終端状態へ到達する」というTLA+の式です。
 
 Mermaidブロックの後ろには、ガード定義、共有状態、イベントペイロード、進行性などの表を置けます。
-specforgeは図と表を合わせて読み込み、構文検査、静的検査、TLA+またはCSPmへの変換を行います。
+specforgeは図と表を合わせて読み込み、構文検査、静的検査、TLA+またはCSPmへの変換を行います。平坦な状態機械はQuintにも変換できます。
 
 specforgeは通常の検証にTLA+とTLCを使います。
 CSPmを検査する場合は、別途FDR4というモデル検査器を使います。
@@ -259,7 +259,7 @@ Syntax Tree、AST）**へ変換します。
 構文解析器は、Markdownの表から状態変数、イベントペイロード、進行性も抽出します。
 
 `--json`を使うと、状態機械のAST、ガード名と条件の対応、状態変数、イベントペイロードをJSONとして取得できます。
-同じ中間表現からTLA+とCSPmを生成しているため、独自の静的検査、可視化、別形式への変換も追加しやすい構造です。
+同じ中間表現からTLA+、CSPm、Quintを生成しているため、独自の静的検査、可視化、別形式への変換も追加しやすい構造です。
 
 ## specforgeで検査できること
 
@@ -291,21 +291,21 @@ TLCは初期状態から到達可能な状態を探索し、宣言した性質�
 
 ### 必要なもの
 
-TLA+やCSPmへの変換だけを行う場合は、Deno 2.xが必要です。
+ソースからのビルドには Bun を使います。ビルド済みの実行ファイルは単体で TLA+ や CSPm へ変換できます。
 `specforge verify`でTLCを実行する場合は、Javaと`tla2tools.jar`も必要です。
 
 ### リポジトリから実行ファイルを作る
 
-リポジトリをクローンし、`deno task compile`を実行します。
+リポジトリをクローンし、`bun run compile`を実行します。
 
 ```bash
 git clone https://github.com/daikichiba9511/specforge.git
 cd specforge
-deno task compile
+bun run compile
 ```
 
 ビルドが成功すると、実行した環境向けの実行ファイルが`bin/specforge`に生成されます。
-Denoランタイムは実行ファイルに組み込まれるため、ビルド後の通常利用では`deno task cli`を経由する必要はありません。
+Bun ランタイムは実行ファイルに組み込まれます。
 
 ```bash
 ./bin/specforge examples/vending-machine.md
@@ -332,7 +332,7 @@ curl -L -o ~/.local/share/specforge/tla2tools.jar \
 export SPECFORGE_TLA_JAR=/path/to/tla2tools.jar
 ```
 
-Nixを使う場合は、`nix develop`でDeno、OpenJDK、`tla2tools.jar`、必要な環境変数が揃ったシェルへ入れます。
+Nixを使う場合は、`nix develop`でBun、OpenJDK、`tla2tools.jar`、必要な環境変数が揃ったシェルへ入れます。
 
 ## 振る舞い仕様を変換して検証する
 
@@ -357,6 +357,29 @@ specforge --tla --bound=3 path/to/spec.md > Spec.tla
 
 `--bound=N`は、状態変数を有限化する`Domain == 0..N`の上限です。
 ガードの境界値へ到達できる最小値から始め、検証したい範囲に合わせて広げます。
+
+### Quintでシナリオを実行する
+
+平坦な状態機械は `--quint` で書き出せます。リポジトリのルートから次を実行すると、自販機のモデルに対して
+「コイン投入 → 返金」と「コイン投入 → 商品選択 → 払い出し」の二つのシナリオをテストできます。
+Quint CLI はテストを実行するときに Bun が取得します。
+
+```bash
+specforge --quint --strict --bound=3 examples/vending-machine.md > examples/quint/Spec.qnt
+bunx --bun --package @informalsystems/quint@0.34.0 quint test examples/quint/vending-tests.qnt --backend=typescript --max-samples=20 --seed=0x42
+```
+
+仕様から想定外の実行列を探すには、常に満たしてほしい条件を指定します。
+
+```bash
+bunx --bun --package @informalsystems/quint@0.34.0 quint run examples/quint/Spec.qnt \
+  --backend=typescript --invariant='phase != "Idle" or state_balance == 0' \
+  --seed=0x42 --max-samples=100 --max-steps=6 --out-itf=refund.itf.json
+```
+
+この例は反例を見つけて終了コード 1 を返し、状態列を `refund.itf.json` に保存します。
+返金イベントは状態を `Idle` に戻しますが、アクション名 `return_all` に残高の更新式は含まれていないためです。
+`quint run` は指定した範囲で実行列をサンプリングします。複合状態や進行性を含む仕様のモデル検査には次の `verify` を使います。
 
 ### TLCまで実行する
 
@@ -441,9 +464,9 @@ skillが参照する詳しい執筆規則は[振る舞い仕様の書き方](./d
 nix develop
 ```
 
-Deno 2、OpenJDK 21、`tla2tools.jar`が揃い、`SPECFORGE_TLA_JAR`と`JAVA_HOME`も設定されます。
+Bun、OpenJDK 21、`tla2tools.jar`が揃い、`SPECFORGE_TLA_JAR`と`JAVA_HOME`も設定されます。
 
-開発ツールのバージョンを管理するmiseを使う場合は、Deno 2とOpenJDK
+開発ツールのバージョンを管理するmiseを使う場合は、BunとOpenJDK
 21を`mise.toml`の定義に従って導入します。
 TLCを使う場合は、前述の手順で`tla2tools.jar`を別途配置してください。
 
@@ -451,22 +474,23 @@ TLCを使う場合は、前述の手順で`tla2tools.jar`を別途配置して�
 mise install
 ```
 
-手動で構築する場合は、Deno 2とOpenJDK 21をインストールしてください。
+手動で開発環境を構築する場合は、`package.json` の `packageManager` に指定したバージョンの Bun と OpenJDK 21 をインストールしてください。
 
 ### 開発用コマンド
 
 ```bash
-deno task test       # テスト
-deno task fmt        # フォーマット
-deno task lint       # lint
-deno task check      # 型検査
+bun install --frozen-lockfile  # ロックファイルに従って開発ツールを導入
+bun run test       # テスト
+bun run fmt        # フォーマット
+bun run lint       # lint
+bun run check      # 型検査
 
-deno task cli --json --strict examples/vending-machine.md
-deno task cli --tla --bound=3 examples/vending-machine.md
-deno task verify --strict --bound=3 examples/vending-machine.md
+bun run cli --json --strict examples/vending-machine.md
+bun run cli --tla --bound=3 examples/vending-machine.md
+bun run verify --strict --bound=3 examples/vending-machine.md
 
-deno task compile    # bin/specforgeを生成
-deno task bench      # ベンチマーク
+bun run compile    # bin/specforgeを生成
+bun run bench      # ベンチマーク
 ```
 
 複数モジュールにまたがる変更へ着手する前に、[AGENTS.md](./AGENTS.md)で現在の設計文脈、正準ドキュメント、残タスクを確認してください。
@@ -508,9 +532,9 @@ specforgeが検査する対象は、Mermaidと補助表で定義した拡張状�
 
 ## 技術構成
 
-- Deno 2.x
+- Bun
 - TypeScript
 - 通常の形式検証にはTLA+とTLCを使用
 - CSPm形式の生成にも対応し、検査にはFDR4を使用
 - 構文解析器とコード生成器の中核は外部依存なし
-- テストは`deno test`と`jsr:@std/assert`を使用
+- テストは `bun:test` と `node:assert/strict` を使用

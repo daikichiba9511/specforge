@@ -117,7 +117,7 @@ stateDiagram-v2
 ## 検証手順
 
 ```bash
-$ deno task verify --bound=3 examples/db-connection-pool.md
+$ bun run verify --bound=3 examples/db-connection-pool.md
 verified ok
 ... distinct states found ...
 Model checking completed. No error has been found.

@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises";
 import { parse } from "../../../../src/parser.ts";
 import { preprocess } from "../../../../src/spec_doc.ts";
 import type { Region, Stmt } from "../../../../src/types.ts";
@@ -40,10 +41,10 @@ const makeResult = (text: string, passed: boolean, evidence: string): Expectatio
     evidence,
 });
 
-const outputDirArg = Deno.args[0];
+const outputDirArg = process.argv[2];
 if (!outputDirArg) {
-    console.error("usage: deno run grade.ts <outputs-dir>");
-    Deno.exit(2);
+    console.error("usage: bun grade.ts <outputs-dir>");
+    process.exit(2);
 }
 
 const outputDir = outputDirArg.replace(/\/$/, "");
@@ -53,9 +54,9 @@ const verificationPath = `${outputDir}/verification.txt`;
 const reportPath = `${outputDir}/report.md`;
 
 const [spec, tla, verification] = await Promise.all([
-    Deno.readTextFile(specPath),
-    Deno.readTextFile(tlaPath),
-    Deno.readTextFile(verificationPath),
+    readFile(specPath, "utf8"),
+    readFile(tlaPath, "utf8"),
+    readFile(verificationPath, "utf8"),
 ]);
 
 const doc = preprocess(spec);
@@ -138,7 +139,7 @@ results.push(makeResult(
 ));
 
 const verifyExitZero =
-    /(?:deno task verify|specforge verify)[\s\S]{0,3000}?(?:exit(?: code)?\s*[:=]?\s*0|終了コード\s*[:=]?\s*0)/i
+    /(?:bun run verify|deno task verify|specforge verify)[\s\S]{0,3000}?(?:exit(?: code)?\s*[:=]?\s*0|終了コード\s*[:=]?\s*0)/i
         .test(verification);
 const noTlcError = /Model checking completed\. No error has been found\./.test(verification);
 results.push(makeResult(
@@ -150,7 +151,7 @@ results.push(makeResult(
 const passed = results.filter((result) => result.passed).length;
 const outputFiles = [specPath, tlaPath, verificationPath, reportPath];
 const outputChars =
-    (await Promise.all(outputFiles.map(async (path) => (await Deno.readTextFile(path)).length)))
+    (await Promise.all(outputFiles.map(async (path) => (await readFile(path, "utf8")).length)))
         .reduce((sum, length) => sum + length, 0);
 const grading = {
     expectations: results,
@@ -197,5 +198,5 @@ const grading = {
 };
 
 const gradingPath = `${outputDir}/../grading.json`;
-await Deno.writeTextFile(gradingPath, `${JSON.stringify(grading, null, 2)}\n`);
+await writeFile(gradingPath, `${JSON.stringify(grading, null, 2)}\n`);
 console.log(`${gradingPath}: ${passed}/${results.length} expectations passed`);

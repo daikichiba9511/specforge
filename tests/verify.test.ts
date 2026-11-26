@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
+import { expect, test } from "bun:test";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { verify, type VerifyDeps } from "../src/verify.ts";
 
 const VALID_SPEC = `stateDiagram-v2
@@ -20,12 +21,12 @@ const mkDeps = (overrides: Partial<VerifyDeps> = {}): VerifyDeps => ({
     ...overrides,
 });
 
-Deno.test("verify: returns verified when TLC succeeds (code 0)", () => {
+test("verify: returns verified when TLC succeeds (code 0)", () => {
     const result = verify("spec.mmd", mkDeps());
     assertEquals(result.kind, "verified");
 });
 
-Deno.test("verify: returns failed with summary when TLC exits non-zero", () => {
+test("verify: returns failed with summary when TLC exits non-zero", () => {
     const result = verify(
         "spec.mmd",
         mkDeps({
@@ -39,24 +40,24 @@ Deno.test("verify: returns failed with summary when TLC exits non-zero", () => {
     assertEquals(result.kind, "failed");
     if (result.kind !== "failed") return;
     assertEquals(result.code, 11);
-    assertStringIncludes(result.stdout, "Deadlock");
+    expect(result.stdout).toContain("Deadlock");
 });
 
-Deno.test("verify: tool_missing when java not found", () => {
+test("verify: tool_missing when java not found", () => {
     const result = verify("spec.mmd", mkDeps({ findJava: () => null }));
     assertEquals(result.kind, "tool_missing");
     if (result.kind !== "tool_missing") return;
-    assertStringIncludes(result.message, "java not found");
+    expect(result.message).toContain("java not found");
 });
 
-Deno.test("verify: tool_missing when tla2tools.jar not found", () => {
+test("verify: tool_missing when tla2tools.jar not found", () => {
     const result = verify("spec.mmd", mkDeps({ findTlaJar: () => null }));
     assertEquals(result.kind, "tool_missing");
     if (result.kind !== "tool_missing") return;
-    assertStringIncludes(result.message, "tla2tools.jar not found");
+    expect(result.message).toContain("tla2tools.jar not found");
 });
 
-Deno.test("verify: parse_error propagates parser failures", () => {
+test("verify: parse_error propagates parser failures", () => {
     const result = verify(
         "spec.mmd",
         mkDeps({ readFile: () => "not a valid spec" }),
@@ -64,7 +65,7 @@ Deno.test("verify: parse_error propagates parser failures", () => {
     assertEquals(result.kind, "parse_error");
 });
 
-Deno.test("verify: io_error when readFile throws", () => {
+test("verify: io_error when readFile throws", () => {
     const result = verify(
         "missing.mmd",
         mkDeps({
@@ -75,10 +76,10 @@ Deno.test("verify: io_error when readFile throws", () => {
     );
     assertEquals(result.kind, "io_error");
     if (result.kind !== "io_error") return;
-    assertStringIncludes(result.message, "could not read file");
+    expect(result.message).toContain("could not read file");
 });
 
-Deno.test("verify: writes Spec.tla and Spec.cfg to temp dir", () => {
+test("verify: writes Spec.tla and Spec.cfg to temp dir", () => {
     const written: Array<[string, string]> = [];
     verify(
         "spec.mmd",
@@ -91,7 +92,7 @@ Deno.test("verify: writes Spec.tla and Spec.cfg to temp dir", () => {
     assertEquals(paths.some((p) => p.endsWith("Spec.tla")), true);
     assertEquals(paths.some((p) => p.endsWith("Spec.cfg")), true);
     const cfgEntry = written.find(([p]) => p.endsWith("Spec.cfg"));
-    if (cfgEntry) assertStringIncludes(cfgEntry[1], "SPECIFICATION Spec");
+    if (cfgEntry) expect(cfgEntry[1]).toContain("SPECIFICATION Spec");
 });
 
 const SPEC_WITH_LIVENESS = `# Spec
@@ -109,7 +110,7 @@ A --> [*]
 | \`Termination\` | \`<>Terminated\` |
 `;
 
-Deno.test("verify: cfg includes PROPERTY when liveness declared", () => {
+test("verify: cfg includes PROPERTY when liveness declared", () => {
     const written: Array<[string, string]> = [];
     verify(
         "spec.md",
@@ -120,11 +121,11 @@ Deno.test("verify: cfg includes PROPERTY when liveness declared", () => {
     );
     const cfgEntry = written.find(([p]) => p.endsWith("Spec.cfg"));
     if (!cfgEntry) throw new Error("Spec.cfg not written");
-    assertStringIncludes(cfgEntry[1], "SPECIFICATION Spec");
-    assertStringIncludes(cfgEntry[1], "PROPERTY Termination");
+    expect(cfgEntry[1]).toContain("SPECIFICATION Spec");
+    expect(cfgEntry[1]).toContain("PROPERTY Termination");
 });
 
-Deno.test("verify: TLA+ includes Fairness + Termination def when liveness declared", () => {
+test("verify: TLA+ includes Fairness + Termination def when liveness declared", () => {
     const written: Array<[string, string]> = [];
     verify(
         "spec.md",
@@ -135,15 +136,15 @@ Deno.test("verify: TLA+ includes Fairness + Termination def when liveness declar
     );
     const tlaEntry = written.find(([p]) => p.endsWith("Spec.tla"));
     if (!tlaEntry) throw new Error("Spec.tla not written");
-    assertStringIncludes(tlaEntry[1], "Fairness == WF_vars(Next)");
-    assertStringIncludes(tlaEntry[1], "Termination == <>Terminated");
+    expect(tlaEntry[1]).toContain("Fairness == WF_vars(Next)");
+    expect(tlaEntry[1]).toContain("Termination == <>Terminated");
 });
 
-Deno.test("verify: cfg has no PROPERTY when no liveness declared", () => {
+test("verify: cfg has no PROPERTY when no liveness declared", () => {
     const written: Array<[string, string]> = [];
     verify("spec.mmd", mkDeps({ writeFile: (path, content) => written.push([path, content]) }));
     const cfgEntry = written.find(([p]) => p.endsWith("Spec.cfg"));
     if (!cfgEntry) throw new Error("Spec.cfg not written");
-    assertStringIncludes(cfgEntry[1], "SPECIFICATION Spec");
+    expect(cfgEntry[1]).toContain("SPECIFICATION Spec");
     assertEquals(cfgEntry[1].includes("PROPERTY"), false);
 });

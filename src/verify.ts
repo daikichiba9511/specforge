@@ -1,5 +1,5 @@
-import { readFileSync, statSync, writeFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env } from "node:process";
@@ -73,27 +73,22 @@ const defaultRunTlc = (
     cfgFile: string,
     cwd: string,
 ): { stdout: string; stderr: string; code: number } => {
-    const cmd = new Deno.Command(javaPath, {
-        args: [
-            "-XX:+UseParallelGC",
-            "-cp",
-            jarPath,
-            "tlc2.TLC",
-            "-config",
-            cfgFile,
-            "-workers",
-            "auto",
-            specFile,
-        ],
-        cwd,
-        stdout: "piped",
-        stderr: "piped",
-    });
-    const out = cmd.outputSync();
+    const result = spawnSync(javaPath, [
+        "-XX:+UseParallelGC",
+        "-cp",
+        jarPath,
+        "tlc2.TLC",
+        "-config",
+        cfgFile,
+        "-workers",
+        "auto",
+        specFile,
+    ], { cwd, encoding: "utf8", maxBuffer: Infinity });
+    if (result.error) throw result.error;
     return {
-        stdout: new TextDecoder().decode(out.stdout),
-        stderr: new TextDecoder().decode(out.stderr),
-        code: out.code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        code: result.status ?? 1,
     };
 };
 

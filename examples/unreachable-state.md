@@ -63,7 +63,7 @@ stateDiagram-v2
 ## 検証手順
 
 ```bash
-$ deno task cli examples/unreachable-state.md
+$ bun run cli examples/unreachable-state.md
 warn V004: state 'Orphan' is declared but unreachable (no transition has it as 'to')
   hint: Add a transition '<from> --> Orphan' from a reachable state, or remove the declaration if intentional.
 
@@ -73,7 +73,7 @@ warn V004: state 'Orphan' is declared but unreachable (no transition has it as '
 `--strict` を付けると warning が failure に昇格:
 
 ```bash
-$ deno task cli --strict examples/unreachable-state.md
+$ bun run cli --strict examples/unreachable-state.md
 exit=1
 (同じ warning) + "validation found 1 issue(s) (--strict)"
 ```
@@ -82,7 +82,7 @@ exit=1
 検出も走らずに完走する:
 
 ```bash
-$ deno task verify examples/unreachable-state.md
+$ bun run verify examples/unreachable-state.md
 verified ok
 ... Model checking completed. No error has been found.
 ```
